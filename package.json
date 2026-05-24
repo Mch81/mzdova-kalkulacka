@@ -1,0 +1,56 @@
+{
+  "name": "mzdova-kalkulacka",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Mzdová kalkulačka – výpočet a porovnání čisté mzdy zaměstnance i IČO",
+  "author": "Mzdová kalkulačka",
+  "main": "electron-main.cjs",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "electron:dev": "concurrently -k \"vite\" \"wait-on tcp:5173 && electron .\"",
+    "dist": "vite build && electron-builder --mac --arm64",
+    "fixsign": "codesign --force --deep --sign - \"release/mac-arm64/MzdovaKalkulacka.app\" && codesign --verify --deep --strict --verbose=2 \"release/mac-arm64/MzdovaKalkulacka.app\" && echo 'Appka podepsána a ověřena'"
+  },
+  "dependencies": {
+    "lucide-react": "^0.383.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "~4.3.4",
+    "concurrently": "~8.2.2",
+    "electron": "~31.7.7",
+    "electron-builder": "~24.13.3",
+    "vite": "~5.4.20",
+    "wait-on": "~7.2.0"
+  },
+  "build": {
+    "appId": "cz.mzdovakalkulacka.app",
+    "productName": "MzdovaKalkulacka",
+    "asar": false,
+    "files": [
+      "dist/**/*",
+      "electron-main.cjs"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "mac": {
+      "target": {
+        "target": "dmg",
+        "arch": "arm64"
+      },
+      "category": "public.app-category.finance",
+      "icon": "build/icon.png",
+      "identity": null,
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false
+    },
+    "dmg": {
+      "title": "Mzdová kalkulačka"
+    }
+  }
+}

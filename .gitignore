@@ -1,0 +1,21 @@
+# závislosti
+node_modules/
+
+# build výstup
+dist/
+dist-ssr/
+release/
+
+# logy
+*.log
+npm-debug.log*
+
+# systémové soubory macOS
+.DS_Store
+
+# editor
+.vscode/
+.idea/
+
+# lokální proměnné prostředí
+*.local
