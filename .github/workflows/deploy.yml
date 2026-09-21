@@ -1,0 +1,56 @@
+name: Deploy web na GitHub Pages
+
+# Po každém pushi do main (nebo ručním spuštění) postaví Vite web
+# a nasadí ho na GitHub Pages -> https://mch81.github.io/mzdova-kalkulacka/
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Nikdy neběží dva deploye zároveň; rozdělaný se zruší
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Instalace závislostí
+        # Electron binárku v CI nestahujeme - build webu ji nepotřebuje
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+        run: npm ci
+
+      - name: Build webu
+        run: npm run build
+
+      - name: Nahrání artefaktu (dist/)
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Nasazení na Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
