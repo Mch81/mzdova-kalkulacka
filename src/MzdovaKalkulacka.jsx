@@ -183,7 +183,8 @@ function defaultItems() {
 }
 
 function defaultInvoices() {
-  return [{ id: uid(), label: "Faktura", amount: 0, period: "month" }];
+  // MD rate je u IČO ve výchozím stavu; další MD rate i běžné faktury lze přidat.
+  return [{ id: uid(), kind: "mdrate", label: "MD rate", amount: 0, days: DEFAULT_MD_DAYS }];
 }
 
 /* ------------------------------------------------------------------ */
@@ -2062,10 +2063,12 @@ const css = `
   background:var(--panel2);
 }
 .th-calc { text-align:left; }
-.row { border-bottom:1px solid var(--line); transition:background .14s; }
+.row { border-bottom:1px solid var(--line); transition:background .14s; align-items:start; }
 .row:hover { background:var(--panel2); }
 
+/* label input + hodnota mají zarovnané horní hrany (jedna linie); hint visí pod labelem */
 .row-label { display:flex; flex-direction:column; gap:2px; }
+.row .row-del { align-self:center; }
 .label-text { font-weight:600; font-size:15px; }
 .label-edit {
   background:var(--bg); border:1px solid var(--line); border-radius:8px;
