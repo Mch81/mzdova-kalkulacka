@@ -635,7 +635,7 @@ export default function App() {
     // první návštěva → přistaneme na úvodní stránce, jinak rovnou u zadání
     try { return backend.getItem("mk_intro_seen") ? "edit" : "info"; } catch (_) { return "info"; }
   }); // 'info' | 'edit' | 'saved' | 'compare'
-  const [type, setType] = useState("employee"); // 'employee' | 'osvc'
+  const [type, setType] = useState(null); // null (nevybráno) | 'employee' | 'osvc'
   const [items, setItems] = useState(defaultItems);
   const [vacationDays, setVacationDays] = useState(0);
   const [invoices, setInvoices] = useState(defaultInvoices);
@@ -749,7 +749,7 @@ export default function App() {
   };
 
   const newSheet = () => {
-    setType("employee");
+    setType(null);
     setItems(defaultItems());
     setVacationDays(0);
     setInvoices(defaultInvoices());
@@ -773,6 +773,7 @@ export default function App() {
       setName(nm);
       setDirty(false);
       await refreshList();
+      setView("saved"); // po uložení skoč na přehled uložených mezd
       flash(`Uloženo: ${nm}`);
     } catch (e) {
       console.error(e);
@@ -1013,21 +1014,10 @@ export default function App() {
 
         {view === "edit" && (
         <>
-        <div className="namebar">
-          <div className="name-field">
-            <Pencil size={14} />
-            <input
-              value={name}
-              placeholder="Pojmenuj tuto mzdu (např. Současná práce)"
-              onChange={(e) => { setName(e.target.value); setDirty(true); }}
-            />
-          </div>
-          <button className="btn primary" onClick={save}>
-            <Save size={16} /> {currentId ? "Uložit změny" : "Uložit mzdu"}
-          </button>
-        </div>
-
-        {/* přepínač typu mzdy */}
+        {/* nejdřív vyber, koho počítáš – teprve pak se zobrazí pole */}
+        {!type && (
+          <p className="type-prompt">Koho budeme počítat? Vyber typ mzdy:</p>
+        )}
         <div className="typeswitch">
           <button
             className={type === "employee" ? "ts-btn on" : "ts-btn"}
@@ -1040,6 +1030,22 @@ export default function App() {
             onClick={() => changeType("osvc")}
           >
             <Building2 size={16} /> IČO / živnostník
+          </button>
+        </div>
+
+        {type && (
+        <>
+        <div className="namebar">
+          <div className="name-field">
+            <Pencil size={14} />
+            <input
+              value={name}
+              placeholder="Pojmenuj tuto mzdu (např. Současná práce)"
+              onChange={(e) => { setName(e.target.value); setDirty(true); }}
+            />
+          </div>
+          <button className="btn primary" onClick={save}>
+            <Save size={16} /> {currentId ? "Uložit změny" : "Uložit mzdu"}
           </button>
         </div>
 
@@ -1308,6 +1314,8 @@ export default function App() {
         )}
         </>
         )}
+        </>
+        )}
 
         {/* SEKCE: Uložené mzdy */}
         {view === "saved" && (
@@ -1511,6 +1519,9 @@ const css = `
 .name-field input::placeholder { color:var(--mut); }
 .name-field:focus-within { border-color:var(--acc); }
 
+.type-prompt {
+  margin:0 0 10px; font-size:15px; font-weight:600; color:var(--txt);
+}
 .typeswitch {
   display:flex; gap:6px; padding:5px; background:var(--panel2);
   border:1px solid var(--line); border-radius:14px; margin-bottom:20px;
