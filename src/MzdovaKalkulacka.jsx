@@ -89,6 +89,7 @@ const storage = {
 //
 // Faktura (OSVČ):
 //   label, amount, period ('month'|'year')
+//   MD rate: kind:'mdrate', amount = cena za 1 MD, days = počet MD/rok (výchozí 220)
 
 const DAYS_DIVISOR = 20; // extra volno: měsíční plat / 20 × dní
 const STATUTORY_VACATION_DAYS = 20; // zákonná dovolená; k ní se přičítají dny navíc
@@ -226,12 +227,27 @@ function totals(items) {
 }
 
 /* ----- OSVČ: příjem z faktur ----- */
+const DEFAULT_MD_DAYS = 220; // předpokládaný počet pracovních (fakturovaných) dní v roce
+
+// { month, year } pro jednu fakturační položku (klasická faktura i „MD rate").
+// MD rate: amount = cena za 1 MD, days = počet MD/rok → rok = rate × days, měsíc = rok / 12.
+function invoiceMonthYear(inv) {
+  const a = Number(inv.amount) || 0;
+  if (inv.kind === "mdrate") {
+    const year = a * (Number(inv.days) || 0);
+    return { month: year / 12, year };
+  }
+  return inv.period === "month"
+    ? { month: a, year: a * 12 }
+    : { month: a / 12, year: a };
+}
+
 function invoiceTotals(invoices) {
   let month = 0, year = 0;
   for (const inv of invoices) {
-    const a = Number(inv.amount) || 0;
-    if (inv.period === "month") { month += a; year += a * 12; }
-    else { month += a / 12; year += a; }
+    const c = invoiceMonthYear(inv);
+    month += c.month;
+    year += c.year;
   }
   return { month, year };
 }
@@ -445,9 +461,8 @@ function ItemRow({ item, items, onChange, onRemove }) {
 /*  Řádek faktury (OSVČ)                                                */
 /* ------------------------------------------------------------------ */
 function InvoiceRow({ inv, onChange, onRemove, canRemove }) {
-  const a = Number(inv.amount) || 0;
-  const month = inv.period === "month" ? a : a / 12;
-  const year = inv.period === "month" ? a * 12 : a;
+  const isMd = inv.kind === "mdrate";
+  const { month, year } = invoiceMonthYear(inv);
   return (
     <div className="row">
       <div className="row-label">
@@ -455,8 +470,9 @@ function InvoiceRow({ inv, onChange, onRemove, canRemove }) {
           className="label-edit"
           value={inv.label}
           onChange={(e) => onChange({ ...inv, label: e.target.value })}
-          placeholder="Faktura"
+          placeholder={isMd ? "MD rate" : "Faktura"}
         />
+        {isMd && <span className="hint">cena za 1 MD × počet MD/rok</span>}
       </div>
       <div className="row-input">
         <input
@@ -468,20 +484,36 @@ function InvoiceRow({ inv, onChange, onRemove, canRemove }) {
             onChange({ ...inv, amount: e.target.value === "" ? 0 : Number(e.target.value) })
           }
         />
-        <div className="toggle">
-          <button
-            className={inv.period === "month" ? "on" : ""}
-            onClick={() => onChange({ ...inv, period: "month" })}
-          >
-            měsíc
-          </button>
-          <button
-            className={inv.period === "year" ? "on" : ""}
-            onClick={() => onChange({ ...inv, period: "year" })}
-          >
-            rok
-          </button>
-        </div>
+        {isMd ? (
+          <div className="md-days">
+            <span className="unit fixed">Kč / MD ×</span>
+            <input
+              type="number"
+              inputMode="numeric"
+              value={inv.days === 0 ? "" : inv.days}
+              placeholder={String(DEFAULT_MD_DAYS)}
+              onChange={(e) =>
+                onChange({ ...inv, days: e.target.value === "" ? 0 : Number(e.target.value) })
+              }
+            />
+            <span className="unit">MD/rok</span>
+          </div>
+        ) : (
+          <div className="toggle">
+            <button
+              className={inv.period === "month" ? "on" : ""}
+              onClick={() => onChange({ ...inv, period: "month" })}
+            >
+              měsíc
+            </button>
+            <button
+              className={inv.period === "year" ? "on" : ""}
+              onClick={() => onChange({ ...inv, period: "year" })}
+            >
+              rok
+            </button>
+          </div>
+        )}
       </div>
       <div className="row-calc">
         <div className="calc-cell">
@@ -696,10 +728,8 @@ function pdfBreakdown(rec) {
     }
   } else {
     for (const inv of rec.invoices || []) {
-      const a = Number(inv.amount) || 0;
-      if (!a) continue;
-      const month = inv.period === "month" ? a : a / 12;
-      const year = inv.period === "month" ? a * 12 : a;
+      if (!(Number(inv.amount) || 0)) continue;
+      const { month, year } = invoiceMonthYear(inv);
       lines.push({ label: inv.label || "Faktura", month, year });
     }
   }
@@ -949,6 +979,13 @@ export default function App() {
   };
   const addInvoice = () => {
     setInvoices((arr) => [...arr, { id: uid(), label: "Faktura", amount: 0, period: "month" }]);
+    setDirty(true);
+  };
+  const addMDRate = () => {
+    setInvoices((arr) => [
+      ...arr,
+      { id: uid(), kind: "mdrate", label: "MD rate", amount: 0, days: DEFAULT_MD_DAYS },
+    ]);
     setDirty(true);
   };
 
@@ -1556,9 +1593,14 @@ export default function App() {
                   canRemove={invoices.length > 1}
                 />
               ))}
-              <button className="add-row" onClick={addInvoice}>
-                <Plus size={16} /> Přidat fakturu
-              </button>
+              <div className="add-row-group">
+                <button className="add-row" onClick={addInvoice}>
+                  <Plus size={16} /> Přidat fakturu
+                </button>
+                <button className="add-row" onClick={addMDRate}>
+                  <Plus size={16} /> Přidat MD rate
+                </button>
+              </div>
             </div>
 
             {/* dopočet odvodů */}
@@ -1816,6 +1858,8 @@ export default function App() {
                 <h3>5. IČO / živnostník – faktury</h3>
                 <p>Zadej fakturované částky (měsíčně nebo ročně). Appka dopočítá paušální výdaje, vyměřovací základ,
                   sociální a zdravotní pojištění (respektuje minimální zálohy) a progresivní daň, a z toho čistý příjem.</p>
+                <p>Tlačítkem <em>Přidat MD rate</em> zadáš cenu za 1 MD (člověkoden). Roční příjem = <strong>MD rate × počet MD/rok</strong>
+                  (výchozí {DEFAULT_MD_DAYS} pracovních dní, lze změnit), měsíční = roční ÷ 12.</p>
               </section>
 
               <section className="help-sec">
@@ -2040,6 +2084,9 @@ const css = `
 .unit { font-size:12.5px; color:var(--mut); white-space:nowrap; }
 .unit.fixed { font-size:12px; }
 
+.md-days { display:inline-flex; align-items:center; gap:6px; flex:0 0 auto; white-space:nowrap; }
+.md-days input[type=number] { width:64px; max-width:64px; flex:0 0 auto; padding:9px 8px; text-align:center; }
+
 .toggle { display:inline-flex; background:var(--bg); border:1px solid var(--line); border-radius:9px; overflow:hidden; }
 .toggle button {
   border:none; background:none; color:var(--mut); cursor:pointer;
@@ -2065,6 +2112,8 @@ const css = `
   padding:15px; font-size:14px; font-weight:600; font-family:inherit; transition:.14s;
 }
 .add-row:hover { background:var(--panel2); }
+.add-row-group { display:flex; flex-wrap:wrap; gap:10px; }
+.add-row-group .add-row { flex:1 1 auto; }
 
 .footnote { color:var(--mut); font-size:12.5px; line-height:1.6; margin:18px 4px 0; }
 
