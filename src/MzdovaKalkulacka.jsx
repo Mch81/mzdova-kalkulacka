@@ -4,7 +4,7 @@ import {
   Wallet, Check, Pencil, Copy,
   Briefcase, Building2, SlidersHorizontal, ChevronDown, ArrowDownToLine,
   BarChart3, TrendingUp, Crown,
-  Download, Upload, Info, ShieldCheck,
+  Download, Upload, Info, ShieldCheck, FileDown,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -628,6 +628,177 @@ function CompareView({ records }) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Tisknutelný dokument pro PDF export porovnání                       */
+/*  (renderuje se skrytě mimo obrazovku, html2canvas ho pak vyfotí)     */
+/* ------------------------------------------------------------------ */
+function pdfBreakdown(rec) {
+  const s = recordSummary(rec);
+  const lines = [];
+  if (!s.isOsvc) {
+    for (const it of rec.items || []) {
+      const a = Number(it.amount) || 0;
+      if (!a) continue;
+      const c = computeItem(it, rec.items || []);
+      lines.push({ label: it.label || "Položka", month: c.month, year: c.year });
+    }
+  } else {
+    for (const inv of rec.invoices || []) {
+      const a = Number(inv.amount) || 0;
+      if (!a) continue;
+      const month = inv.period === "month" ? a : a / 12;
+      const year = inv.period === "month" ? a * 12 : a;
+      lines.push({ label: inv.label || "Faktura", month, year });
+    }
+  }
+  return { s, lines };
+}
+
+function ComparePdfDoc({ records }) {
+  const data = records
+    .map((rec) => ({ rec, s: recordSummary(rec) }))
+    .sort((a, b) => b.s.compareMonth - a.s.compareMonth);
+
+  const anyVac = data.some((d) => d.s.vacBonusMonth > 0);
+  const maxMonth = Math.max(...data.map((d) => d.s.compareMonth), 1);
+  const maxYear = Math.max(...data.map((d) => d.s.compareYear), 1);
+  const bestMonth = Math.max(...data.map((d) => d.s.compareMonth));
+  const dateStr = new Date().toLocaleDateString("cs-CZ", {
+    day: "numeric", month: "long", year: "numeric",
+  });
+
+  const Bars = ({ period }) => {
+    const max = period === "month" ? maxMonth : maxYear;
+    return (
+      <div className="pdf-bars">
+        {data.map(({ rec, s }) => {
+          const netVal = period === "month" ? s.month : s.year;
+          const bonusVal = period === "month" ? s.vacBonusMonth : s.vacBonusYear;
+          const total = netVal + bonusVal;
+          const totalPct = Math.max(2, (total / max) * 100);
+          const netShare = total > 0 ? (netVal / total) * 100 : 100;
+          return (
+            <div className="pdf-bar-row" key={rec.id}>
+              <div className="pdf-bar-name">{rec.name}</div>
+              <div className="pdf-bar-track">
+                <div
+                  className={"pdf-bar-fill" + (s.isOsvc ? " osvc" : "")}
+                  style={{ width: totalPct + "%" }}
+                >
+                  {bonusVal > 0 && (
+                    <>
+                      <span className="pdf-seg net" style={{ width: netShare + "%" }} />
+                      <span className="pdf-seg bonus" style={{ width: 100 - netShare + "%" }} />
+                    </>
+                  )}
+                </div>
+              </div>
+              <div className="pdf-bar-val">{fmt(total)} Kč</div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  return (
+    <div className="pdf-inner">
+      <div className="pdf-header">
+        <h1>Porovnání mezd</h1>
+        <div className="pdf-sub">Vygenerováno {dateStr} · {data.length} {data.length === 1 ? "mzda" : data.length < 5 ? "mzdy" : "mezd"}</div>
+      </div>
+
+      {/* souhrnná tabulka čísel */}
+      <table className="pdf-table">
+        <thead>
+          <tr>
+            <th>Mzda</th>
+            <th>Typ</th>
+            <th className="r">Čistá / měsíc</th>
+            {anyVac && <th className="r">Bonus za volno</th>}
+            <th className="r">Celkem / měsíc</th>
+            <th className="r">Celkem / rok</th>
+          </tr>
+        </thead>
+        <tbody>
+          {data.map(({ rec, s }) => (
+            <tr key={rec.id} className={s.compareMonth === bestMonth ? "best" : ""}>
+              <td>{s.compareMonth === bestMonth ? "★ " : ""}{rec.name}</td>
+              <td>{s.isOsvc ? "IČO" : "Zaměstnanec"}</td>
+              <td className="r">{fmt(s.month)} Kč</td>
+              {anyVac && <td className="r">{s.vacBonusMonth > 0 ? "+" + fmt(s.vacBonusMonth) + " Kč" : "—"}</td>}
+              <td className="r strong">{fmt(s.compareMonth)} Kč</td>
+              <td className="r">{fmt(s.compareYear)} Kč</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {/* grafy */}
+      <h2 className="pdf-h2">Graf – celkem měsíčně{anyVac ? " (vč. bonusu za volno)" : ""}</h2>
+      <Bars period="month" />
+      <h2 className="pdf-h2">Graf – celkem ročně{anyVac ? " (vč. bonusu za volno)" : ""}</h2>
+      <Bars period="year" />
+
+      {/* rozpis položek jednotlivých mezd */}
+      <h2 className="pdf-h2">Rozpis jednotlivých mezd</h2>
+      {data.map(({ rec, s }) => {
+        const { lines } = pdfBreakdown(rec);
+        const d = s.detail;
+        return (
+          <div className="pdf-detail" key={rec.id}>
+            <div className="pdf-detail-head">
+              <span className="pdf-detail-name">{rec.name}</span>
+              <span className="pdf-detail-type">{s.isOsvc ? "IČO / živnostník" : "Zaměstnanec"}</span>
+            </div>
+            <table className="pdf-table small">
+              <thead>
+                <tr>
+                  <th>{s.isOsvc ? "Faktura / položka" : "Položka"}</th>
+                  <th className="r">Měsíčně</th>
+                  <th className="r">Ročně</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lines.length === 0 && (
+                  <tr><td colSpan={3} className="pdf-empty">Bez vyplněných položek</td></tr>
+                )}
+                {lines.map((l, i) => (
+                  <tr key={i}>
+                    <td>{l.label}</td>
+                    <td className="r">{fmt(l.month)} Kč</td>
+                    <td className="r">{fmt(l.year)} Kč</td>
+                  </tr>
+                ))}
+                {s.isOsvc && d && (
+                  <>
+                    <tr className="sub"><td>Hrubý příjem</td><td className="r">{fmt(d.incomeMonth)} Kč</td><td className="r">{fmt(d.incomeYear)} Kč</td></tr>
+                    <tr className="neg"><td>− Sociální pojištění</td><td className="r">−{fmt(d.social / 12)} Kč</td><td className="r">−{fmt(d.social)} Kč</td></tr>
+                    <tr className="neg"><td>− Zdravotní pojištění</td><td className="r">−{fmt(d.health / 12)} Kč</td><td className="r">−{fmt(d.health)} Kč</td></tr>
+                    <tr className="neg"><td>− Daň z příjmu</td><td className="r">−{fmt(d.tax / 12)} Kč</td><td className="r">−{fmt(d.tax)} Kč</td></tr>
+                  </>
+                )}
+                {!s.isOsvc && s.vacBonusMonth > 0 && (
+                  <tr className="sub"><td>+ Bonus za volno ({s.vacationDays} dní)</td><td className="r">+{fmt(s.vacBonusMonth)} Kč</td><td className="r">+{fmt(s.vacBonusYear)} Kč</td></tr>
+                )}
+                <tr className="total">
+                  <td>Čistá mzda{!s.isOsvc && s.vacBonusMonth > 0 ? " vč. bonusu" : ""}</td>
+                  <td className="r">{fmt(s.compareMonth)} Kč</td>
+                  <td className="r">{fmt(s.compareYear)} Kč</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        );
+      })}
+
+      <div className="pdf-foot">
+        Orientační výpočet dle sazeb 2026 · Mzdová kalkulačka
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  Hlavní aplikace                                                    */
 /* ------------------------------------------------------------------ */
 export default function App() {
@@ -652,6 +823,8 @@ export default function App() {
   const [dirty, setDirty] = useState(false);
   const fileInputRef = useRef(null);
   const [exportName, setExportName] = useState("");
+  const pdfRef = useRef(null);
+  const [pdfBusy, setPdfBusy] = useState(false);
 
   const t = totals(items);
   const osvc = osvcCalc(invoices, rates);
@@ -907,6 +1080,66 @@ export default function App() {
     setCompareIds((ids) =>
       ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]
     );
+  };
+
+  /* ---- export porovnání do PDF (grafy + čísla + rozpis položek) ---- */
+  const exportComparePDF = async () => {
+    const node = pdfRef.current;
+    if (!node || compareRecords.length === 0) {
+      flash("Nejdřív vyber mzdy k porovnání");
+      return;
+    }
+    setPdfBusy(true);
+    try {
+      // knihovny načteme až teď (nezvětšují hlavní bundle)
+      const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
+        import("jspdf"),
+        import("html2canvas"),
+      ]);
+      if (document.fonts && document.fonts.ready) {
+        try { await document.fonts.ready; } catch (_) {}
+      }
+      const canvas = await html2canvas(node, {
+        scale: 2,
+        backgroundColor: "#ffffff",
+        windowWidth: node.scrollWidth,
+      });
+      const pdf = new jsPDF({ unit: "mm", format: "a4" });
+      const pageW = pdf.internal.pageSize.getWidth();
+      const pageH = pdf.internal.pageSize.getHeight();
+      const margin = 10;
+      const imgW = pageW - margin * 2;
+      const usableH = pageH - margin * 2;
+      // kolik pixelů plátna se vejde na jednu stránku
+      const pxPerPage = Math.floor((usableH * canvas.width) / imgW);
+
+      let sy = 0;
+      let page = 0;
+      while (sy < canvas.height) {
+        const sliceH = Math.min(pxPerPage, canvas.height - sy);
+        // vyřízneme jen tu část plátna, která patří na aktuální stránku
+        const pageCanvas = document.createElement("canvas");
+        pageCanvas.width = canvas.width;
+        pageCanvas.height = sliceH;
+        const ctx = pageCanvas.getContext("2d");
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, pageCanvas.width, pageCanvas.height);
+        ctx.drawImage(canvas, 0, sy, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
+        const pageImg = pageCanvas.toDataURL("image/jpeg", 0.92);
+        const pageImgH = (sliceH * imgW) / canvas.width;
+        if (page > 0) pdf.addPage();
+        pdf.addImage(pageImg, "JPEG", margin, margin, imgW, pageImgH);
+        sy += sliceH;
+        page++;
+      }
+      pdf.save("porovnani-mezd.pdf");
+      flash("PDF vygenerováno");
+    } catch (e) {
+      console.error(e);
+      flash("PDF se nezdařilo");
+    } finally {
+      setPdfBusy(false);
+    }
   };
 
   const compareRecords = compareIds
@@ -1427,13 +1660,27 @@ export default function App() {
                 {compareRecords.length === 0 ? (
                   <p className="muted center-text">Vyber aspoň jednu mzdu výše.</p>
                 ) : (
-                  <CompareView records={compareRecords} />
+                  <>
+                    <div className="cmp-export">
+                      <button className="btn primary" onClick={exportComparePDF} disabled={pdfBusy}>
+                        <FileDown size={16} /> {pdfBusy ? "Generuji PDF…" : "Exportovat do PDF"}
+                      </button>
+                    </div>
+                    <CompareView records={compareRecords} />
+                  </>
                 )}
               </>
             )}
           </div>
         )}
       </div>
+
+      {/* skrytý dokument pro PDF export (html2canvas ho vyfotí) */}
+      {compareRecords.length > 0 && (
+        <div className="pdf-doc" ref={pdfRef} aria-hidden="true">
+          <ComparePdfDoc records={compareRecords} />
+        </div>
+      )}
 
       {toast && <div className="toast">{toast}</div>}
     </>
@@ -1914,6 +2161,53 @@ const css = `
   .intro-actions{ flex-direction:column; align-items:stretch; }
   .intro-actions .btn{ justify-content:center; }
 }
+
+/* export porovnání do PDF – tlačítko */
+.cmp-export { display:flex; justify-content:flex-end; margin-bottom:16px; }
+.cmp-export .btn[disabled] { opacity:.6; cursor:default; }
+
+/* skrytý dokument, který html2canvas vyfotí do PDF (mimo .wrap → pevné barvy) */
+.pdf-doc { position:fixed; left:-10000px; top:0; width:760px; background:#fff; z-index:-1; }
+.pdf-inner {
+  width:760px; background:#fff; color:#1a1f2e; padding:36px 40px;
+  font-family:'Outfit','Segoe UI',system-ui,sans-serif;
+}
+.pdf-header { border-bottom:2px solid #1a1f2e; padding-bottom:14px; margin-bottom:22px; }
+.pdf-header h1 { margin:0; font-size:26px; font-weight:700; letter-spacing:-.01em; }
+.pdf-sub { margin-top:5px; font-size:13px; color:#6b7385; }
+.pdf-h2 { font-size:16px; font-weight:700; margin:26px 0 12px; color:#1a1f2e; }
+
+.pdf-table { width:100%; border-collapse:collapse; font-size:13px; }
+.pdf-table th { text-align:left; padding:9px 10px; background:#eef1f6; color:#4a5163; font-weight:600; border-bottom:1px solid #dde2ec; }
+.pdf-table td { padding:9px 10px; border-bottom:1px solid #eef1f6; }
+.pdf-table th.r, .pdf-table td.r { text-align:right; }
+.pdf-table td.strong { font-weight:700; }
+.pdf-table tr.best td { background:#e9f7f2; }
+.pdf-table.small { font-size:12.5px; }
+.pdf-table.small th { background:#f4f6fa; }
+.pdf-table tr.neg td { color:#b0453f; }
+.pdf-table tr.sub td { color:#4a5163; }
+.pdf-table tr.total td { font-weight:700; border-top:2px solid #1a1f2e; background:#f4f6fa; }
+.pdf-empty { color:#9aa1b2; font-style:italic; }
+
+.pdf-bars { display:flex; flex-direction:column; gap:9px; margin-bottom:4px; }
+.pdf-bar-row { display:flex; align-items:center; gap:12px; }
+.pdf-bar-name { width:150px; font-size:12.5px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pdf-bar-track { flex:1; height:22px; background:#eef1f6; border-radius:6px; overflow:hidden; }
+.pdf-bar-fill { height:100%; background:#13a085; border-radius:6px; display:flex; }
+.pdf-bar-fill.osvc { background:#9277f4; }
+.pdf-seg { height:100%; display:block; }
+.pdf-seg.net { background:#13a085; }
+.pdf-seg.bonus { background:#7c5cf0; }
+.pdf-bar-val { width:112px; text-align:right; font-size:12.5px; font-weight:700; }
+
+.pdf-detail { margin-bottom:18px; border:1px solid #dde2ec; border-radius:10px; overflow:hidden; }
+.pdf-detail-head { display:flex; justify-content:space-between; align-items:center; padding:10px 14px; background:#f4f6fa; border-bottom:1px solid #dde2ec; }
+.pdf-detail-name { font-weight:700; font-size:14px; }
+.pdf-detail-type { font-size:12px; color:#6b7385; }
+.pdf-detail .pdf-table th:first-child, .pdf-detail .pdf-table td:first-child { padding-left:14px; }
+.pdf-detail .pdf-table th:last-child, .pdf-detail .pdf-table td:last-child { padding-right:14px; }
+.pdf-foot { margin-top:24px; padding-top:12px; border-top:1px solid #dde2ec; font-size:11px; color:#9aa1b2; text-align:center; }
 
 .toast {
   position:fixed; bottom:26px; left:50%; transform:translateX(-50%); z-index:60;
