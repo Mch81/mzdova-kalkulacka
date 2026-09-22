@@ -183,8 +183,12 @@ function defaultItems() {
 }
 
 function defaultInvoices() {
-  // MD rate je u IČO ve výchozím stavu; další MD rate i běžné faktury lze přidat.
-  return [{ id: uid(), kind: "mdrate", label: "MD rate", amount: 0, days: DEFAULT_MD_DAYS }];
+  // U IČO jsou ve výchozím stavu obě položky – MD rate i běžná faktura;
+  // uživatel si vybere (a může přidat další). Aspoň jedna musí zůstat.
+  return [
+    { id: uid(), kind: "mdrate", label: "MD rate", amount: 0, days: DEFAULT_MD_DAYS },
+    { id: uid(), label: "Faktura", amount: 0, period: "month" },
+  ];
 }
 
 /* ------------------------------------------------------------------ */
