@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   Plus, Trash2, Save, FolderOpen, Calendar, Coins,
   Wallet, Check, Pencil, Copy,
   Briefcase, Building2, SlidersHorizontal, ChevronDown, ArrowDownToLine,
   BarChart3, TrendingUp, Crown,
+  Download, Upload, Info, ShieldCheck,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -646,6 +647,10 @@ export default function App() {
   const [compareIds, setCompareIds] = useState([]); // vybrané mzdy k porovnání
   const [toast, setToast] = useState(null);
   const [dirty, setDirty] = useState(false);
+  const [showIntro, setShowIntro] = useState(() => {
+    try { return !backend.getItem("mk_intro_seen"); } catch (_) { return true; }
+  });
+  const fileInputRef = useRef(null);
 
   const t = totals(items);
   const osvc = osvcCalc(invoices, rates);
@@ -654,6 +659,12 @@ export default function App() {
   const flash = (msg) => {
     setToast(msg);
     setTimeout(() => setToast(null), 2200);
+  };
+
+  /* ---- úvodní obrazovka (upozornění na ukládání) ---- */
+  const dismissIntro = () => {
+    setShowIntro(false);
+    storage.set("mk_intro_seen", "1");
   };
 
   /* ---- načtení seznamu uložených mezd ---- */
@@ -813,6 +824,78 @@ export default function App() {
     }
   };
 
+  /* ---- export všech uložených mezd do souboru (JSON) ---- */
+  const exportData = () => {
+    try {
+      const payload = {
+        app: "mzdova-kalkulacka",
+        verze: 1,
+        exportovano: new Date().toISOString(),
+        pocet: saved.length,
+        mzdy: saved,
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const d = new Date();
+      const stamp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `mzdova-kalkulacka-${stamp}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      flash(
+        saved.length
+          ? `Vyexportováno ${saved.length} ${saved.length === 1 ? "mzda" : saved.length < 5 ? "mzdy" : "mezd"}`
+          : "Export hotový (zatím žádné uložené mzdy)"
+      );
+    } catch (e) {
+      console.error(e);
+      flash("Export se nezdařil");
+    }
+  };
+
+  /* ---- import mezd z dříve vyexportovaného souboru ---- */
+  const importData = async (file) => {
+    try {
+      const text = await file.text();
+      const data = JSON.parse(text);
+      const list = Array.isArray(data)
+        ? data
+        : Array.isArray(data && data.mzdy)
+        ? data.mzdy
+        : null;
+      if (!list) {
+        flash("Soubor nemá očekávaný formát");
+        return;
+      }
+      let n = 0;
+      for (const rec of list) {
+        if (!rec || typeof rec !== "object") continue;
+        const id =
+          typeof rec.id === "string" && rec.id.startsWith("mzda:")
+            ? rec.id
+            : "mzda:" + uid();
+        const clean = { ...rec, id, updated: rec.updated || Date.now() };
+        await storage.set(id, JSON.stringify(clean));
+        n++;
+      }
+      await refreshList();
+      setView("saved");
+      flash(
+        n
+          ? `Naimportováno ${n} ${n === 1 ? "mzda" : n < 5 ? "mzdy" : "mezd"}`
+          : "Soubor neobsahoval žádné mzdy"
+      );
+    } catch (e) {
+      console.error(e);
+      flash("Import se nezdařil – neplatný soubor");
+    }
+  };
+
   const toggleCompare = (id) => {
     setCompareIds((ids) =>
       ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id]
@@ -826,6 +909,31 @@ export default function App() {
   return (
     <>
       <style>{css}</style>
+
+      {showIntro && (
+        <div className="intro-overlay" role="dialog" aria-modal="true">
+          <div className="intro-card">
+            <div className="intro-mark"><ShieldCheck size={26} /></div>
+            <h2>Než začneš</h2>
+            <p className="intro-lead">
+              Tahle kalkulačka <strong>neukládá tvá data na žádný server</strong>.
+              Uložené mzdy zůstávají jen ve tvém prohlížeči na tomto zařízení.
+            </p>
+            <ul className="intro-list">
+              <li>Data mohou <strong>zmizet</strong> při smazání dat prohlížeče, v anonymním okně nebo na jiném počítači či prohlížeči.</li>
+              <li>Pro trvalé uchování nebo přenos jinam si data <strong>vyexportuj do souboru</strong>.</li>
+              <li>Exportovaný soubor kdykoli zase <strong>naimportuješ</strong> zpět.</li>
+            </ul>
+            <p className="intro-hint">
+              Export i import najdeš v sekci „Uložené mzdy". Tuhle obrazovku znovu otevřeš přes <Info size={13} /> v záhlaví.
+            </p>
+            <button className="btn primary center" onClick={dismissIntro}>
+              <Check size={16} /> Rozumím, pokračovat
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="wrap">
         {/* dekorativní pozadí */}
         <div className="bg-grid" />
@@ -840,6 +948,9 @@ export default function App() {
             </div>
           </div>
           <div className="head-actions">
+            <button className="icon-btn" title="O ukládání dat" onClick={() => setShowIntro(true)}>
+              <Info size={16} />
+            </button>
             <button className="btn primary" onClick={newSheet}>
               <Plus size={16} /> Nová mzda
             </button>
@@ -1170,6 +1281,37 @@ export default function App() {
         {/* SEKCE: Uložené mzdy */}
         {view === "saved" && (
           <div className="section">
+            <div className="datatools">
+              <div className="dt-note">
+                <ShieldCheck size={16} />
+                <span>
+                  Data žijí jen ve tvém prohlížeči a neukládají se na žádný server.
+                  Pro trvalé uchování nebo přenos jinam si je zálohuj exportem.
+                </span>
+              </div>
+              <div className="dt-actions">
+                <button className="btn ghost sm" onClick={exportData}>
+                  <Download size={15} /> Exportovat data
+                </button>
+                <button
+                  className="btn ghost sm"
+                  onClick={() => fileInputRef.current && fileInputRef.current.click()}
+                >
+                  <Upload size={15} /> Importovat data
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="application/json,.json"
+                  style={{ display: "none" }}
+                  onChange={(e) => {
+                    const f = e.target.files && e.target.files[0];
+                    if (f) importData(f);
+                    e.target.value = "";
+                  }}
+                />
+              </div>
+            </div>
             {loadingList ? (
               <p className="muted">Načítám…</p>
             ) : saved.length === 0 ? (
@@ -1695,6 +1837,49 @@ const css = `
 .icon-btn:hover { color:var(--txt); }
 .icon-btn.danger:hover { color:var(--danger); background:rgba(224,82,77,.12); }
 .muted { color:var(--mut); font-size:14px; }
+
+/* úvodní obrazovka – upozornění na ukládání dat */
+.intro-overlay {
+  position:fixed; inset:0; z-index:80; display:grid; place-items:center;
+  padding:22px; background:rgba(26,31,46,.55); backdrop-filter:blur(6px);
+  animation:fade .2s ease;
+}
+.intro-card {
+  position:relative; width:100%; max-width:520px; background:var(--panel);
+  border:1px solid var(--line); border-radius:20px; padding:30px 30px 26px;
+  box-shadow:0 24px 60px rgba(26,31,46,.28); animation:pop .25s ease;
+}
+.intro-mark {
+  width:52px; height:52px; border-radius:14px; display:grid; place-items:center;
+  background:linear-gradient(135deg,var(--acc),var(--acc2)); color:#fff; margin-bottom:16px;
+}
+.intro-card h2 { margin:0 0 8px; font-family:'Fraunces',serif; font-size:24px; color:var(--txt); }
+.intro-lead { margin:0 0 14px; font-size:15px; line-height:1.55; color:var(--txt); }
+.intro-lead strong { color:var(--danger); }
+.intro-list { margin:0 0 16px; padding-left:18px; display:flex; flex-direction:column; gap:8px; }
+.intro-list li { font-size:14px; line-height:1.5; color:var(--mut); }
+.intro-list strong { color:var(--txt); }
+.intro-hint {
+  display:inline-flex; align-items:center; gap:5px; flex-wrap:wrap;
+  margin:0 0 20px; font-size:12.5px; line-height:1.5; color:var(--mut);
+  background:var(--panel2); border:1px solid var(--line); border-radius:10px; padding:10px 12px;
+}
+.intro-hint svg { vertical-align:middle; }
+
+/* nástroje pro data (export / import) */
+.datatools {
+  display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;
+  background:var(--panel); border:1px solid var(--line); border-radius:14px;
+  padding:14px 16px; margin-bottom:18px;
+}
+.dt-note { display:flex; align-items:flex-start; gap:9px; font-size:13px; line-height:1.45; color:var(--mut); max-width:430px; }
+.dt-note svg { color:var(--acc2); flex:none; margin-top:1px; }
+.dt-actions { display:flex; gap:8px; flex-wrap:wrap; }
+@media (max-width:680px){
+  .datatools{ flex-direction:column; align-items:stretch; }
+  .dt-actions{ justify-content:stretch; }
+  .dt-actions .btn{ flex:1; justify-content:center; }
+}
 
 .toast {
   position:fixed; bottom:26px; left:50%; transform:translateX(-50%); z-index:60;
