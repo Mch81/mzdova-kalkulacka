@@ -4,7 +4,7 @@ import {
   Wallet, Check, Pencil, Copy,
   Briefcase, Building2, SlidersHorizontal, ChevronDown, ArrowDownToLine,
   BarChart3, TrendingUp, Crown,
-  Download, Upload, Info, ShieldCheck, FileDown,
+  Download, Upload, Info, ShieldCheck, FileDown, BookOpen,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -1230,6 +1230,12 @@ export default function App() {
           >
             <BarChart3 size={16} /> Porovnání mezd
           </button>
+          <button
+            className={view === "help" ? "nav-btn on" : "nav-btn"}
+            onClick={() => setView("help")}
+          >
+            <BookOpen size={16} /> Nápověda
+          </button>
         </nav>
 
         {/* SEKCE: Úvod – upozornění na ukládání + export/import */}
@@ -1682,6 +1688,105 @@ export default function App() {
                 )}
               </>
             )}
+          </div>
+        )}
+
+        {/* SEKCE: Nápověda / uživatelská příručka */}
+        {view === "help" && (
+          <div className="section">
+            <div className="help">
+              <div className="help-head">
+                <div className="help-mark"><BookOpen size={26} /></div>
+                <div>
+                  <h2>Uživatelská příručka</h2>
+                  <p className="help-lead">Jak spočítat a porovnat čistou mzdu zaměstnance i živnostníka (IČO).</p>
+                </div>
+              </div>
+
+              <section className="help-sec">
+                <h3>1. K čemu appka slouží</h3>
+                <p>
+                  Spočítá <strong>čistou mzdu</strong> ze zadaných údajů – zvlášť pro <strong>zaměstnance</strong>
+                  a zvlášť pro <strong>živnostníka (IČO)</strong>. Mzdy si můžeš pojmenovat, uložit a navzájem
+                  <strong> porovnat</strong> v tabulce i grafech a porovnání vyexportovat do PDF.
+                </p>
+              </section>
+
+              <section className="help-sec">
+                <h3>2. Kde se ukládají data <span className="help-tag">důležité</span></h3>
+                <p>
+                  Appka <strong>neukládá nic na server</strong>. Vše zůstává jen ve tvém prohlížeči na tomto zařízení.
+                  Data se mohou ztratit (smazání dat prohlížeče, anonymní okno, jiný počítač).
+                </p>
+                <ul>
+                  <li>Na záložce <strong>Úvod</strong> najdeš <strong>Zálohu dat</strong>: tlačítko <em>Exportovat data</em> uloží
+                    všechny mzdy do jednoho <code>.json</code> souboru.</li>
+                  <li><em>Importovat data</em> tentýž soubor kdykoli načte zpět – i na jiném počítači.</li>
+                </ul>
+              </section>
+
+              <section className="help-sec">
+                <h3>3. Zadání mzdy</h3>
+                <p>Na záložce <strong>Zadej mzdu</strong> nejdřív vyber <strong>typ</strong> – Zaměstnanec, nebo IČO / živnostník.
+                  Teprve pak se zobrazí pole k vyplnění. Mzdu pojmenuj a dej <strong>Uložit mzdu</strong> –
+                  appka ji uloží a přepne na <strong>Uložené mzdy</strong>. Formulář se vyčistí.</p>
+              </section>
+
+              <section className="help-sec">
+                <h3>4. Zaměstnanec – položky</h3>
+                <ul>
+                  <li><strong>Plat</strong> – hrubá měsíční (nebo roční) mzda. Přepínač <em>měsíc / rok</em>.</li>
+                  <li><strong>Bonus</strong> – roční prémie (zadává se jako roční částka).</li>
+                  <li><strong>Penze, Životní, Cafeterie, Stravenky</strong> – nepeněžní benefity; připočítají se k čisté mzdě v plné výši.</li>
+                  <li><strong>Extra volno</strong> – dny dovolené <strong>navíc nad zákonných 20 dní</strong>.</li>
+                  <li>Vlastní řádek přidáš tlačítkem <em>Přidat vlastní položku</em>.</li>
+                </ul>
+                <p className="help-note">Čistá mzda = z peněžní mzdy (Plat + Bonus) se odečte sociální, zdravotní a daň
+                  (progresivně 15 % / 23 %) po slevě na poplatníka; hodnota benefitů se připočte.</p>
+              </section>
+
+              <section className="help-sec">
+                <h3>5. IČO / živnostník – faktury</h3>
+                <p>Zadej fakturované částky (měsíčně nebo ročně). Appka dopočítá paušální výdaje, vyměřovací základ,
+                  sociální a zdravotní pojištění (respektuje minimální zálohy) a progresivní daň, a z toho čistý příjem.</p>
+              </section>
+
+              <section className="help-sec">
+                <h3>6. Sazby 2026</h3>
+                <p>Pod výpočtem je rozbalovací sekce <strong>Sazby a parametry výpočtu</strong> – všechny sazby (odvody, daň,
+                  hranice progrese, minimální zálohy, sleva na poplatníka) jsou <strong>editovatelné</strong>. Tlačítkem
+                  <em> Obnovit výchozí hodnoty (2026)</em> se vrátí přednastavené sazby.</p>
+              </section>
+
+              <section className="help-sec">
+                <h3>7. Uložené mzdy</h3>
+                <ul>
+                  <li><strong>Otevřít</strong> – načte mzdu zpět do formuláře k úpravě (uloží se přes <em>Uložit změny</em>).</li>
+                  <li><strong>Duplikovat</strong> – vytvoří kopii, kterou upravíš a uložíš jako novou.</li>
+                  <li><strong>Smazat</strong> – odstraní mzdu (jen z tvého prohlížeče).</li>
+                </ul>
+              </section>
+
+              <section className="help-sec">
+                <h3>8. Porovnání mezd</h3>
+                <p>Zaškrtni mzdy, které chceš porovnat. Zobrazí se přehledná tabulka a pruhové grafy
+                  (celkem měsíčně i ročně), nejvyšší je označená.</p>
+                <p className="help-note">U zaměstnance se do porovnání připočítá <strong>bonus za volno</strong> oproti IČO –
+                  počítá se z <strong>20 zákonných dní + dny navíc</strong> (z položky Extra volno), protože živnostník
+                  za dovolenou nedostává nic.</p>
+              </section>
+
+              <section className="help-sec">
+                <h3>9. Export porovnání do PDF</h3>
+                <p>V Porovnání klikni na <strong>Exportovat do PDF</strong>. Appka se zeptá na <strong>název souboru</strong>
+                  a vygeneruje PDF s tabulkou, grafy a rozpisem položek každé mzdy (částky měsíčně i ročně).</p>
+              </section>
+
+              <p className="help-disclaimer">
+                Všechny výpočty jsou <strong>orientační</strong> a používají sazby platné pro rok 2026. Pro závazné výpočty
+                se obrať na účetního nebo mzdovou účtárnu.
+              </p>
+            </div>
           </div>
         )}
       </div>
@@ -2171,6 +2276,45 @@ const css = `
   .intro-page { padding:24px 20px; }
   .intro-actions{ flex-direction:column; align-items:stretch; }
   .intro-actions .btn{ justify-content:center; }
+}
+
+/* nápověda / uživatelská příručka */
+.help {
+  background:var(--panel); border:1px solid var(--line); border-radius:20px;
+  padding:30px 32px; box-shadow:0 12px 34px rgba(26,31,46,.10); max-width:760px;
+}
+.help-head { display:flex; align-items:flex-start; gap:16px; margin-bottom:8px; }
+.help-mark {
+  width:52px; height:52px; border-radius:14px; display:grid; place-items:center; flex:none;
+  background:linear-gradient(135deg,var(--acc),var(--acc2)); color:#fff;
+}
+.help-head h2 { margin:0 0 4px; font-family:'Fraunces',serif; font-size:24px; color:var(--txt); }
+.help-lead { margin:0; font-size:14.5px; color:var(--mut); line-height:1.5; }
+.help-sec { padding:18px 0; border-top:1px solid var(--line); }
+.help-sec h3 { margin:0 0 10px; font-size:16px; font-weight:700; color:var(--txt); display:flex; align-items:center; gap:8px; }
+.help-tag {
+  font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.03em;
+  background:rgba(224,82,77,.12); color:var(--danger); padding:2px 8px; border-radius:20px;
+}
+.help-sec p { margin:0 0 8px; font-size:14px; line-height:1.6; color:var(--txt); }
+.help-sec ul { margin:0 0 8px; padding-left:20px; display:flex; flex-direction:column; gap:6px; }
+.help-sec li { font-size:14px; line-height:1.55; color:var(--txt); }
+.help-sec strong { color:var(--txt); }
+.help-sec em { font-style:normal; font-weight:600; color:var(--acc); }
+.help-sec code {
+  font-family:'JetBrains Mono',monospace; font-size:12.5px; background:var(--panel2);
+  border:1px solid var(--line); border-radius:6px; padding:1px 6px;
+}
+.help-note {
+  background:var(--panel2); border:1px solid var(--line); border-radius:10px;
+  padding:10px 12px; font-size:13px !important; color:var(--mut) !important;
+}
+.help-disclaimer {
+  margin:18px 0 0; padding-top:16px; border-top:1px solid var(--line);
+  font-size:13px; line-height:1.55; color:var(--mut);
+}
+@media (max-width:680px){
+  .help { padding:24px 20px; }
 }
 
 /* export porovnání do PDF – tlačítko */
