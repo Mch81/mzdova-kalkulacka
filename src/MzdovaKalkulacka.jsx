@@ -131,7 +131,7 @@ function defaultItems() {
     { id: uid(), label: "Cafeterie", kind: "amount", amount: 0, period: "month", removable: false },
     { id: uid(), label: "Stravenky", kind: "amount", amount: 0, period: "month", removable: false },
     { id: uid(), label: "Bonus", kind: "bonus", amount: 0, period: "year", removable: false },
-    { id: uid(), label: "Extra volno nad zákonných 20 dní", kind: "extra", amount: 0, period: "year", removable: false },
+    { id: uid(), label: "Extra volno", kind: "extra", amount: 0, period: "year", removable: false },
   ];
 }
 
