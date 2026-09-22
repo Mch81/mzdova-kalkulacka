@@ -651,6 +651,7 @@ export default function App() {
   const [toast, setToast] = useState(null);
   const [dirty, setDirty] = useState(false);
   const fileInputRef = useRef(null);
+  const [exportName, setExportName] = useState("");
 
   const t = totals(items);
   const osvc = osvcCalc(invoices, rates);
@@ -826,6 +827,11 @@ export default function App() {
 
   /* ---- export všech uložených mezd do souboru (JSON) ---- */
   const exportData = () => {
+    const base = exportName.trim();
+    if (!base) {
+      flash("Název souboru je povinný");
+      return;
+    }
     try {
       const payload = {
         app: "mzdova-kalkulacka",
@@ -838,11 +844,12 @@ export default function App() {
         type: "application/json",
       });
       const url = URL.createObjectURL(blob);
-      const d = new Date();
-      const stamp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      // sanitizace: pryč s lomítky, doplníme .json
+      const safe = base.replace(/[\\/]+/g, "-");
+      const filename = safe.toLowerCase().endsWith(".json") ? safe : safe + ".json";
       const a = document.createElement("a");
       a.href = url;
-      a.download = `mzdova-kalkulacka-${stamp}.json`;
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -977,6 +984,18 @@ export default function App() {
 
               <div className="intro-data">
                 <span className="intro-data-title">Záloha dat</span>
+                <label className="export-name">
+                  <span className="export-name-label">Název souboru pro export <em>*</em></span>
+                  <div className="export-name-input">
+                    <input
+                      type="text"
+                      value={exportName}
+                      placeholder="např. moje-mzdy"
+                      onChange={(e) => setExportName(e.target.value)}
+                    />
+                    <span className="export-name-suffix">.json</span>
+                  </div>
+                </label>
                 <div className="intro-actions">
                   <button className="btn primary" onClick={exportData}>
                     <Download size={16} /> Exportovat data
@@ -1873,6 +1892,19 @@ const css = `
   display:block; font-size:12px; font-weight:600; letter-spacing:.04em; text-transform:uppercase;
   color:var(--mut); margin-bottom:12px;
 }
+.export-name { display:block; margin-bottom:14px; max-width:360px; }
+.export-name-label { display:block; font-size:13px; font-weight:600; color:var(--txt); margin-bottom:6px; }
+.export-name-label em { color:var(--danger); font-style:normal; }
+.export-name-input {
+  display:flex; align-items:center; background:var(--panel); border:1px solid var(--line);
+  border-radius:10px; padding:0 12px; transition:.14s;
+}
+.export-name-input:focus-within { border-color:var(--acc); box-shadow:0 0 0 3px rgba(59,108,246,.14); }
+.export-name-input input {
+  flex:1; border:none; background:none; outline:none; padding:10px 0; font-size:14px;
+  font-family:inherit; color:var(--txt); min-width:0;
+}
+.export-name-suffix { color:var(--mut); font-size:14px; font-family:'JetBrains Mono',monospace; }
 .intro-actions { display:flex; gap:10px; flex-wrap:wrap; }
 .intro-hint {
   margin:12px 0 0; font-size:12.5px; line-height:1.5; color:var(--mut); max-width:560px;
