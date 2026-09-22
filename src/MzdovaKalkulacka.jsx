@@ -2281,7 +2281,7 @@ const css = `
 /* nápověda / uživatelská příručka */
 .help {
   background:var(--panel); border:1px solid var(--line); border-radius:20px;
-  padding:30px 32px; box-shadow:0 12px 34px rgba(26,31,46,.10); max-width:760px;
+  padding:30px 32px; box-shadow:0 12px 34px rgba(26,31,46,.10);
 }
 .help-head { display:flex; align-items:flex-start; gap:16px; margin-bottom:8px; }
 .help-mark {
