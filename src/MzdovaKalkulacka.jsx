@@ -1102,11 +1102,30 @@ export default function App() {
       if (document.fonts && document.fonts.ready) {
         try { await document.fonts.ready; } catch (_) {}
       }
+      // Dynamický scale – Safari má tvrdé limity plátna (max ~4096 px na stranu
+      // a omezenou plochu). U vysokého dokumentu scale snížíme, ať se vejde.
+      const nodeW = node.scrollWidth || 760;
+      const nodeH = node.scrollHeight || 1000;
+      const MAX_DIM = 4000;       // bezpečný max rozměr strany plátna
+      const MAX_AREA = 10000000;  // bezpečná max plocha plátna
+      let scale = Math.min(
+        2,
+        MAX_DIM / nodeW,
+        MAX_DIM / nodeH,
+        Math.sqrt(MAX_AREA / (nodeW * nodeH))
+      );
+      if (!(scale > 0.5)) scale = 1;
       const canvas = await html2canvas(node, {
-        scale: 2,
+        scale,
         backgroundColor: "#ffffff",
-        windowWidth: node.scrollWidth,
+        windowWidth: nodeW,
+        useCORS: true,
+        logging: false,
+        imageTimeout: 0,
       });
+      if (!canvas || !canvas.width || !canvas.height) {
+        throw new Error("prázdné plátno (canvas " + (canvas && canvas.width) + "×" + (canvas && canvas.height) + ")");
+      }
       const pdf = new jsPDF({ unit: "mm", format: "a4" });
       const pageW = pdf.internal.pageSize.getWidth();
       const pageH = pdf.internal.pageSize.getHeight();
@@ -1138,8 +1157,9 @@ export default function App() {
       pdf.save("porovnani-mezd.pdf");
       flash("PDF vygenerováno");
     } catch (e) {
-      console.error(e);
-      flash("PDF se nezdařilo");
+      console.error("PDF export error:", e);
+      const msg = e && e.message ? e.message : String(e);
+      flash("PDF se nezdařilo: " + msg);
     } finally {
       setPdfBusy(false);
     }
