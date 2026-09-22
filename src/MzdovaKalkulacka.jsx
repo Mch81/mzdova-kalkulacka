@@ -925,7 +925,8 @@ export default function App() {
     setDirty(true);
   };
 
-  const newSheet = () => {
+  // vyčistí formulář do výchozího prázdného stavu (bez přepnutí view / toastu)
+  const resetForm = () => {
     setType(null);
     setItems(defaultItems());
     setInvoices(defaultInvoices());
@@ -934,6 +935,10 @@ export default function App() {
     setName("");
     setCurrentId(null);
     setDirty(false);
+  };
+
+  const newSheet = () => {
+    resetForm();
     setView("edit");
     flash("Nová mzda připravena");
   };
@@ -945,11 +950,9 @@ export default function App() {
     try {
       const r = await storage.set(id, JSON.stringify(record));
       if (!r) return flash("Uložení se nezdařilo");
-      setCurrentId(id);
-      setName(nm);
-      setDirty(false);
       await refreshList();
-      setView("saved"); // po uložení skoč na přehled uložených mezd
+      resetForm();       // po uložení vyčisti formulář – uložená mzda se ve formuláři už nezobrazí
+      setView("saved");  // a skoč na přehled uložených mezd (editace přes „Otevřít")
       flash(`Uloženo: ${nm}`);
     } catch (e) {
       console.error(e);
