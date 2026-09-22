@@ -172,10 +172,10 @@ function normalizeItems(items) {
 function defaultItems() {
   return [
     { id: uid(), key: "plat", kind: "plat", amount: 0, period: "month", removable: false },
-    { id: uid(), key: "penze", kind: "amount", amount: 0, period: "month", removable: false },
-    { id: uid(), key: "zivotni", kind: "amount", amount: 0, period: "month", removable: false },
-    { id: uid(), key: "cafeterie", kind: "amount", amount: 0, period: "month", removable: false },
-    { id: uid(), key: "stravenky", kind: "amount", amount: 0, period: "month", removable: false },
+    { id: uid(), key: "penze", kind: "amount", amount: 0, period: null, removable: false },
+    { id: uid(), key: "zivotni", kind: "amount", amount: 0, period: null, removable: false },
+    { id: uid(), key: "cafeterie", kind: "amount", amount: 0, period: null, removable: false },
+    { id: uid(), key: "stravenky", kind: "amount", amount: 0, period: null, removable: false },
     { id: uid(), key: "bonus", kind: "bonus", amount: 0, period: "year", removable: false },
     { id: uid(), key: "extra", kind: "extra", amount: 0, period: "year", removable: false },
   ];
@@ -191,7 +191,9 @@ function defaultInvoices() {
 function monthlyPlat(items) {
   const plat = items.find((i) => i.kind === "plat");
   if (!plat) return 0;
-  return plat.period === "month" ? plat.amount : plat.amount / 12;
+  if (plat.period === "month") return plat.amount;
+  if (plat.period === "year") return plat.amount / 12;
+  return 0; // období nevybráno
 }
 
 // vrací { month, year } pro jednu položku
@@ -209,7 +211,8 @@ function computeItem(item, items) {
   }
   // plat + běžné položky s přepínačem
   if (item.period === "month") return { month: a, year: a * 12 };
-  return { month: a / 12, year: a };
+  if (item.period === "year") return { month: a / 12, year: a };
+  return { month: 0, year: 0 }; // období nevybráno → do součtu se nezapočítává
 }
 
 function totals(items) {
@@ -930,7 +933,7 @@ export default function App() {
   const addCustom = () => {
     setItems((arr) => [
       ...arr,
-      { id: uid(), label: "", kind: "amount", amount: 0, period: "month", removable: true, custom: true },
+      { id: uid(), label: "", kind: "amount", amount: 0, period: null, removable: true, custom: true },
     ]);
     setDirty(true);
   };
@@ -994,6 +997,20 @@ export default function App() {
   };
 
   const save = async () => {
+    // U zaměstnance: položka s vyplněnou částkou musí mít vybráno měsíc/rok.
+    if (type === "employee") {
+      const missing = items.find(
+        (it) =>
+          (it.kind === "amount" || it.kind === "plat") &&
+          (Number(it.amount) || 0) > 0 &&
+          it.period !== "month" &&
+          it.period !== "year"
+      );
+      if (missing) {
+        setView("edit");
+        return flash(`Vyber měsíc/rok u položky „${itemLabel(missing)}"`);
+      }
+    }
     const nm = name.trim() || "Bez názvu";
     const id = currentId || "mzda:" + uid();
     const record = { id, name: nm, type, items, invoices, rates, empRates, updated: Date.now() };
