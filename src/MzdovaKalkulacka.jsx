@@ -2155,7 +2155,13 @@ const css = `
 .pick-name { font-weight:600; }
 
 /* porovnání – tabulka */
-.compare { animation:fade .2s ease; }
+.compare {
+  animation:fade .2s ease;
+  background:var(--panel); border:1px solid var(--line); border-radius:20px;
+  padding:26px 28px; box-shadow:0 12px 34px rgba(26,31,46,.10);
+}
+.compare .cmp-bars:last-child { margin-bottom:2px; }
+@media (max-width:680px){ .compare { padding:20px 16px; } }
 .cmp-table-wrap { overflow-x:auto; border:1px solid var(--line); border-radius:16px; box-shadow:0 2px 8px rgba(35,33,28,.04); }
 .cmp-table { width:100%; border-collapse:collapse; background:var(--panel); }
 .cmp-table th {
