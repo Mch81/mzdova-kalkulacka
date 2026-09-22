@@ -91,6 +91,7 @@ const storage = {
 //   label, amount, period ('month'|'year')
 
 const DAYS_DIVISOR = 20; // extra volno: měsíční plat / 20 × dní
+const STATUTORY_VACATION_DAYS = 20; // zákonná dovolená; k ní se přičítají dny navíc
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 
@@ -130,7 +131,7 @@ function defaultItems() {
     { id: uid(), label: "Cafeterie", kind: "amount", amount: 0, period: "month", removable: false },
     { id: uid(), label: "Stravenky", kind: "amount", amount: 0, period: "month", removable: false },
     { id: uid(), label: "Bonus", kind: "bonus", amount: 0, period: "year", removable: false },
-    { id: uid(), label: "Extra volno", kind: "extra", amount: 0, period: "year", removable: false },
+    { id: uid(), label: "Extra volno na zákonných 20 dní", kind: "extra", amount: 0, period: "year", removable: false },
   ];
 }
 
@@ -286,7 +287,9 @@ function recordSummary(rec) {
   }
   const t = totals(rec.items || []);
   const e = employeeCalc(rec.items || [], { ...defaultEmpRates(), ...(rec.empRates || {}) });
-  const days = Number(rec.vacationDays) || 0;
+  // počet dní volna = 20 zákonných + dny navíc (z položky „Extra volno")
+  const extraDays = Number((rec.items || []).find((i) => i.kind === "extra")?.amount) || 0;
+  const days = STATUTORY_VACATION_DAYS + extraDays;
   const vacBonusYear = (e.netMonth / DAYS_DIVISOR) * days;  // bonus za volno / rok
   const vacBonusMonth = vacBonusYear / 12;
   return {
@@ -330,7 +333,7 @@ function ItemRow({ item, items, onChange, onRemove }) {
         ) : (
           <span className="label-text">{item.label}</span>
         )}
-        {isExtra && <span className="hint">{`Plat ÷ ${DAYS_DIVISOR} × dní`}</span>}
+        {isExtra && <span className="hint">{`dny navíc nad ${STATUTORY_VACATION_DAYS} zákonných`}</span>}
         {isBonus && <span className="hint">ročně</span>}
       </div>
 
@@ -600,8 +603,9 @@ function CompareView({ records }) {
 
       {anyVac && (
         <p className="cmp-vac-hint">
-          Celková částka u zaměstnance zahrnuje bonus za dny volna: ročně (čistá měsíční mzda ÷ {DAYS_DIVISOR}) × počet dní,
-          rozpočítaný do měsíce — protože živnostník za volno nedostává nic.
+          Celková částka u zaměstnance zahrnuje bonus za dny volna: počet dní = {STATUTORY_VACATION_DAYS} zákonných + dny navíc
+          (z položky „Extra volno"), ročně (čistá měsíční mzda ÷ {DAYS_DIVISOR}) × počet dní, rozpočítaný do měsíce —
+          protože živnostník za volno nedostává nic.
         </p>
       )}
 
@@ -808,7 +812,6 @@ export default function App() {
   }); // 'info' | 'edit' | 'saved' | 'compare'
   const [type, setType] = useState(null); // null (nevybráno) | 'employee' | 'osvc'
   const [items, setItems] = useState(defaultItems);
-  const [vacationDays, setVacationDays] = useState(0);
   const [invoices, setInvoices] = useState(defaultInvoices);
   const [rates, setRates] = useState(defaultRates);
   const [empRates, setEmpRates] = useState(defaultEmpRates);
@@ -925,7 +928,6 @@ export default function App() {
   const newSheet = () => {
     setType(null);
     setItems(defaultItems());
-    setVacationDays(0);
     setInvoices(defaultInvoices());
     setRates(defaultRates());
     setEmpRates(defaultEmpRates());
@@ -939,7 +941,7 @@ export default function App() {
   const save = async () => {
     const nm = name.trim() || "Bez názvu";
     const id = currentId || "mzda:" + uid();
-    const record = { id, name: nm, type, items, vacationDays, invoices, rates, empRates, updated: Date.now() };
+    const record = { id, name: nm, type, items, invoices, rates, empRates, updated: Date.now() };
     try {
       const r = await storage.set(id, JSON.stringify(record));
       if (!r) return flash("Uložení se nezdařilo");
@@ -958,7 +960,6 @@ export default function App() {
   const load = (rec) => {
     setType(rec.type || "employee");
     setItems((rec.items || defaultItems()).map((i) => ({ ...i })));
-    setVacationDays(Number(rec.vacationDays) || 0);
     setInvoices((rec.invoices || defaultInvoices()).map((i) => ({ ...i })));
     setRates({ ...defaultRates(), ...(rec.rates || {}) });
     setEmpRates({ ...defaultEmpRates(), ...(rec.empRates || {}) });
@@ -972,7 +973,6 @@ export default function App() {
   const duplicate = (rec) => {
     setType(rec.type || "employee");
     setItems((rec.items || defaultItems()).map((i) => ({ ...i, id: uid() })));
-    setVacationDays(Number(rec.vacationDays) || 0);
     setInvoices((rec.invoices || defaultInvoices()).map((i) => ({ ...i, id: uid() })));
     setRates({ ...defaultRates(), ...(rec.rates || {}) });
     setEmpRates({ ...defaultEmpRates(), ...(rec.empRates || {}) });
@@ -1350,29 +1350,6 @@ export default function App() {
               </button>
             </div>
 
-            {/* počet dní volna */}
-            <div className="vacation">
-              <div className="vac-label">
-                <Calendar size={16} />
-                <div>
-                  <span className="vac-title">Počet dní volna</span>
-                  <span className="vac-sub">Zohlední se v Porovnání jako bonus oproti IČO</span>
-                </div>
-              </div>
-              <div className="vac-input">
-                <input
-                  type="number"
-                  inputMode="decimal"
-                  value={vacationDays === 0 ? "" : vacationDays}
-                  placeholder="0"
-                  onChange={(e) => {
-                    setVacationDays(e.target.value === "" ? 0 : Number(e.target.value));
-                    setDirty(true);
-                  }}
-                />
-                <span className="unit">dní / rok</span>
-              </div>
-            </div>
 
             {/* dopočet čisté mzdy zaměstnance */}
             <div className="breakdown">
@@ -1446,7 +1423,8 @@ export default function App() {
             </div>
 
             <p className="footnote">
-              Bonus se zadává jako roční částka. Extra volno = (měsíční Plat ÷ {DAYS_DIVISOR}) × počet dní.
+              Bonus se zadává jako roční částka. Do „Extra volno" zadej dny dovolené navíc nad zákonných {STATUTORY_VACATION_DAYS} dní
+              (hodnota = měsíční Plat ÷ {DAYS_DIVISOR} × dny navíc). V Porovnání s IČO se počítá bonus za {STATUTORY_VACATION_DAYS} zákonných + dny navíc.
               Čistá mzda se počítá z peněžní mzdy (Plat + Bonus): odečte se sociální {empRates.socialPct} %,
               zdravotní {empRates.healthPct} % a daň ({empRates.taxPct} % / {empRates.taxPctHigh} %) po slevě na poplatníka.
               Hodnota nepeněžních benefitů (penze, stravenky, cafeterie, extra volno) se připočítává v plné výši.
