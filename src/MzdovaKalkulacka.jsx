@@ -123,15 +123,61 @@ function defaultEmpRates() {
   };
 }
 
+// Stabilní klíče a názvy vestavěných položek zaměstnance.
+// Zobrazovaný název se bere ODSUD podle klíče (ne z uloženého řetězce),
+// takže přejmenování se projeví i u dřív uložených mezd. Jediný zdroj pravdy.
+const BUILTIN_LABELS = {
+  plat: "Mzda",
+  penze: "Příspěvek na penzijní připojištění",
+  zivotni: "Příspěvek na životní připojištění",
+  cafeterie: "Cafeterie",
+  stravenky: "Stravenky",
+  bonus: "Bonus",
+  extra: "Extra volno",
+};
+
+// Historické názvy → klíč (migrace mezd uložených před zavedením klíčů).
+const LEGACY_LABEL_KEYS = {
+  "Plat": "plat", "Mzda": "plat",
+  "Penze": "penze", "Příspěvek na penzijní připojištění": "penze",
+  "Životní": "zivotni", "Příspěvek na životní připojištění": "zivotni",
+  "Cafeterie": "cafeterie",
+  "Stravenky": "stravenky",
+  "Bonus": "bonus",
+  "Extra volno": "extra",
+};
+
+// Zobrazený název položky: vestavěná dle klíče (vždy aktuální), vlastní dle uloženého názvu.
+const itemLabel = (item) =>
+  (item && item.key && BUILTIN_LABELS[item.key]) || (item && item.label) || "Položka";
+
+// Odvodí stabilní klíč vestavěné položky (i u starších uložených mezd bez klíče).
+function keyForItem(item) {
+  if (item.key) return item.key;
+  if (item.custom) return undefined;      // vlastní položka nemá klíč
+  if (item.kind === "plat") return "plat";
+  if (item.kind === "bonus") return "bonus";
+  if (item.kind === "extra") return "extra";
+  return LEGACY_LABEL_KEYS[item.label];    // penze/životní/cafeterie/stravenky dle názvu
+}
+
+// Doplní klíče vestavěným položkám; volá se při načtení mzdy z úložiště.
+function normalizeItems(items) {
+  return (items || []).map((it) => {
+    const key = keyForItem(it);
+    return key ? { ...it, key } : it;
+  });
+}
+
 function defaultItems() {
   return [
-    { id: uid(), label: "Plat", kind: "plat", amount: 0, period: "month", removable: false },
-    { id: uid(), label: "Penze", kind: "amount", amount: 0, period: "month", removable: false },
-    { id: uid(), label: "Životní", kind: "amount", amount: 0, period: "month", removable: false },
-    { id: uid(), label: "Cafeterie", kind: "amount", amount: 0, period: "month", removable: false },
-    { id: uid(), label: "Stravenky", kind: "amount", amount: 0, period: "month", removable: false },
-    { id: uid(), label: "Bonus", kind: "bonus", amount: 0, period: "year", removable: false },
-    { id: uid(), label: "Extra volno", kind: "extra", amount: 0, period: "year", removable: false },
+    { id: uid(), key: "plat", kind: "plat", amount: 0, period: "month", removable: false },
+    { id: uid(), key: "penze", kind: "amount", amount: 0, period: "month", removable: false },
+    { id: uid(), key: "zivotni", kind: "amount", amount: 0, period: "month", removable: false },
+    { id: uid(), key: "cafeterie", kind: "amount", amount: 0, period: "month", removable: false },
+    { id: uid(), key: "stravenky", kind: "amount", amount: 0, period: "month", removable: false },
+    { id: uid(), key: "bonus", kind: "bonus", amount: 0, period: "year", removable: false },
+    { id: uid(), key: "extra", kind: "extra", amount: 0, period: "year", removable: false },
   ];
 }
 
@@ -331,9 +377,9 @@ function ItemRow({ item, items, onChange, onRemove }) {
             placeholder="Název položky"
           />
         ) : (
-          <span className="label-text">{item.label}</span>
+          <span className="label-text">{itemLabel(item)}</span>
         )}
-        {isExtra && <span className="hint">{`dny navíc nad ${STATUTORY_VACATION_DAYS} zákonných`}</span>}
+        {isExtra && <span className="hint">{`dny navíc nad ${STATUTORY_VACATION_DAYS} zákonných dní`}</span>}
         {isBonus && <span className="hint">ročně</span>}
       </div>
 
@@ -643,7 +689,7 @@ function pdfBreakdown(rec) {
       const a = Number(it.amount) || 0;
       if (!a) continue;
       const c = computeItem(it, rec.items || []);
-      lines.push({ label: it.label || "Položka", month: c.month, year: c.year });
+      lines.push({ label: itemLabel(it), month: c.month, year: c.year });
     }
   } else {
     for (const inv of rec.invoices || []) {
@@ -852,7 +898,11 @@ export default function App() {
       for (const k of keys) {
         try {
           const r = await storage.get(k);
-          if (r && r.value) out.push(JSON.parse(r.value));
+          if (r && r.value) {
+            const rec = JSON.parse(r.value);
+            rec.items = normalizeItems(rec.items);   // doplní klíče i starším mzdám
+            out.push(rec);
+          }
         } catch (_) {}
       }
       out.sort((a, b) => (b.updated || 0) - (a.updated || 0));
@@ -1397,7 +1447,7 @@ export default function App() {
                 <span />
               </div>
               <div className="bd-row">
-                <span>Hrubá mzda (Plat + Bonus)</span>
+                <span>Hrubá mzda (Mzda + Bonus)</span>
                 <span className="bd-v">{fmt(emp.grossYear)} Kč</span>
               </div>
               <div className="bd-row deduct">
@@ -1463,8 +1513,8 @@ export default function App() {
 
             <p className="footnote">
               Bonus se zadává jako roční částka. Do „Extra volno" zadej dny dovolené navíc nad zákonných {STATUTORY_VACATION_DAYS} dní
-              (hodnota = měsíční Plat ÷ {DAYS_DIVISOR} × dny navíc). V Porovnání s IČO se počítá bonus za {STATUTORY_VACATION_DAYS} zákonných + dny navíc.
-              Čistá mzda se počítá z peněžní mzdy (Plat + Bonus): odečte se sociální {empRates.socialPct} %,
+              (hodnota = měsíční Mzda ÷ {DAYS_DIVISOR} × dny navíc). V Porovnání s IČO se počítá bonus za {STATUTORY_VACATION_DAYS} zákonných + dny navíc.
+              Čistá mzda se počítá z peněžní mzdy (Mzda + Bonus): odečte se sociální {empRates.socialPct} %,
               zdravotní {empRates.healthPct} % a daň ({empRates.taxPct} % / {empRates.taxPctHigh} %) po slevě na poplatníka.
               Hodnota nepeněžních benefitů (penze, stravenky, cafeterie, extra volno) se připočítává v plné výši.
               Jde o orientační odhad — skutečnou výplatu ověř ve mzdové účtárně.
@@ -1735,13 +1785,13 @@ export default function App() {
               <section className="help-sec">
                 <h3>4. Zaměstnanec – položky</h3>
                 <ul>
-                  <li><strong>Plat</strong> – hrubá měsíční (nebo roční) mzda. Přepínač <em>měsíc / rok</em>.</li>
+                  <li><strong>Mzda</strong> – hrubá měsíční (nebo roční) mzda. Přepínač <em>měsíc / rok</em>.</li>
                   <li><strong>Bonus</strong> – roční prémie (zadává se jako roční částka).</li>
-                  <li><strong>Penze, Životní, Cafeterie, Stravenky</strong> – nepeněžní benefity; připočítají se k čisté mzdě v plné výši.</li>
+                  <li><strong>Příspěvek na penzijní připojištění, Příspěvek na životní připojištění, Cafeterie, Stravenky</strong> – nepeněžní benefity; připočítají se k čisté mzdě v plné výši.</li>
                   <li><strong>Extra volno</strong> – dny dovolené <strong>navíc nad zákonných 20 dní</strong>.</li>
                   <li>Vlastní řádek přidáš tlačítkem <em>Přidat vlastní položku</em>.</li>
                 </ul>
-                <p className="help-note">Čistá mzda = z peněžní mzdy (Plat + Bonus) se odečte sociální, zdravotní a daň
+                <p className="help-note">Čistá mzda = z peněžní mzdy (Mzda + Bonus) se odečte sociální, zdravotní a daň
                   (progresivně 15 % / 23 %) po slevě na poplatníka; hodnota benefitů se připočte.</p>
               </section>
 
