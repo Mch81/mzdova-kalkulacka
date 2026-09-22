@@ -1092,6 +1092,16 @@ export default function App() {
       flash("Nejdřív vyber mzdy k porovnání");
       return;
     }
+    // vyžádej název souboru (zavoláno hned – zůstáváme v gestu uživatele)
+    const input = window.prompt("Zadej název souboru pro PDF:", "porovnani-mezd");
+    if (input === null) return; // uživatel zrušil
+    const base = input.trim();
+    if (!base) {
+      flash("Název souboru je povinný");
+      return;
+    }
+    const safe = base.replace(/[\\/]+/g, "-");
+    const filename = safe.toLowerCase().endsWith(".pdf") ? safe : safe + ".pdf";
     setPdfBusy(true);
     try {
       // knihovny načteme až teď (nezvětšují hlavní bundle)
@@ -1154,7 +1164,7 @@ export default function App() {
         sy += sliceH;
         page++;
       }
-      pdf.save("porovnani-mezd.pdf");
+      pdf.save(filename);
       flash("PDF vygenerováno");
     } catch (e) {
       console.error("PDF export error:", e);
