@@ -94,6 +94,8 @@ const storage = {
 
 const HIDDEN_KEY = "mk_hidden_ids"; // id mezd se skrytými částkami na kartách
 const MASK = "******";
+// částka, nebo hvězdičky, když je mzda skrytá
+const money = (v, hidden) => (hidden ? MASK : fmt(v));
 
 const DAYS_DIVISOR = 20; // extra volno: měsíční plat / 20 × dní
 const STATUTORY_VACATION_DAYS = 20; // zákonná dovolená; k ní se přičítají dny navíc
@@ -584,11 +586,12 @@ function RateField({ label, suffix, value, onChange }) {
 /* ------------------------------------------------------------------ */
 /*  Porovnání mezd                                                     */
 /* ------------------------------------------------------------------ */
-function CompareView({ records }) {
+function CompareView({ records, hiddenIds = [], onToggleHidden }) {
   const data = records.map((rec) => {
     const s = recordSummary(rec);
     return {
       id: rec.id, name: rec.name, isOsvc: s.isOsvc,
+      hidden: hiddenIds.includes(rec.id),             // částky skryté hvězdičkami
       net: s.month, netYear: s.year,                  // čistá mzda bez bonusu za volno
       vacBonus: s.vacBonusMonth, vacBonusYear: s.vacBonusYear,
       vacationDays: s.vacationDays,
@@ -620,25 +623,25 @@ function CompareView({ records }) {
               <div
                 className={"cmp-bar-stack" + (d.isOsvc ? " osvc" : "")}
                 style={{ width: totalPct + "%" }}
-                title={`Celkem: ${fmt(total)} Kč`}
+                title={`Celkem: ${money(total, d.hidden)} Kč`}
               >
                 <div
                   className="cmp-seg net"
                   style={{ width: netShare + "%" }}
-                  title={`Čistá mzda: ${fmt(netVal)} Kč`}
+                  title={`Čistá mzda: ${money(netVal, d.hidden)} Kč`}
                 />
                 {hasBonus && (
                   <div
                     className="cmp-seg bonus"
                     style={{ width: (100 - netShare) + "%" }}
-                    title={`Bonus za volno: ${fmt(bonusVal)} Kč`}
+                    title={`Bonus za volno: ${money(bonusVal, d.hidden)} Kč`}
                   />
                 )}
               </div>
             </div>
             <div className="cmp-bar-figures">
-              <span className="cmp-bar-total">{fmt(total)} Kč</span>
-              {bonusVal > 0 && (
+              <span className="cmp-bar-total">{money(total, d.hidden)} Kč</span>
+              {bonusVal > 0 && !d.hidden && (
                 <span className="cmp-bar-split">
                   <span className="split-net">{fmt(netVal)}</span>
                   <span className="split-plus">+</span>
@@ -673,19 +676,30 @@ function CompareView({ records }) {
                 <td className="cmp-td-name">
                   {d.month === bestMonth && <Crown size={14} className="crown" />}
                   {d.name}
+                  {onToggleHidden && (
+                    <button
+                      className={d.hidden ? "icon-btn xs on" : "icon-btn xs"}
+                      title={d.hidden ? "Zobrazit částky" : "Skrýt částky"}
+                      aria-label={d.hidden ? "Zobrazit částky" : "Skrýt částky"}
+                      aria-pressed={d.hidden}
+                      onClick={() => onToggleHidden(d.id)}
+                    >
+                      {d.hidden ? <EyeOff size={13} /> : <Eye size={13} />}
+                    </button>
+                  )}
                 </td>
                 <td>
                   <span className={d.isOsvc ? "type-tag osvc" : "type-tag"}>{d.isOsvc ? "IČO" : "Zaměstnanec"}</span>
                 </td>
-                <td className="num mono">{fmt(d.net)} Kč</td>
+                <td className="num mono">{money(d.net, d.hidden)} Kč</td>
                 {anyVac && (
                   <td className="num mono vac-col">
-                    {d.vacBonus > 0 ? `+${fmt(d.vacBonus)} Kč` : "—"}
+                    {d.vacBonus > 0 ? `+${money(d.vacBonus, d.hidden)} Kč` : "—"}
                     {d.vacBonus > 0 && <span className="vac-days-note">{d.vacationDays} dní</span>}
                   </td>
                 )}
-                <td className="num mono strong-col">{fmt(d.month)} Kč</td>
-                <td className="num mono">{fmt(d.year)} Kč</td>
+                <td className="num mono strong-col">{money(d.month, d.hidden)} Kč</td>
+                <td className="num mono">{money(d.year, d.hidden)} Kč</td>
               </tr>
             ))}
           </tbody>
@@ -694,12 +708,13 @@ function CompareView({ records }) {
 
       {data.length > 1 && (
         <p className="cmp-note">
-          <TrendingUp size={14} /> Nejvyšší celkový měsíční příjem: <strong>{fmt(bestMonth)} Kč</strong>
+          <TrendingUp size={14} /> Nejvyšší celkový měsíční příjem: <strong>{money(bestMonth, data[0].hidden)} Kč</strong>
           {(() => {
             const sorted = [...data].sort((a, b) => b.month - a.month);
             if (sorted.length >= 2) {
               const diff = sorted[0].month - sorted[1].month;
-              if (diff > 0) return ` — o ${fmt(diff)} Kč/měs víc než druhá v pořadí.`;
+              const diffHidden = sorted[0].hidden || sorted[1].hidden;
+              if (diff > 0) return ` — o ${money(diff, diffHidden)} Kč/měs víc než druhá v pořadí.`;
             }
             return ".";
           })()}
@@ -760,9 +775,9 @@ function pdfBreakdown(rec) {
   return { s, lines };
 }
 
-function ComparePdfDoc({ records }) {
+function ComparePdfDoc({ records, hiddenIds = [] }) {
   const data = records
-    .map((rec) => ({ rec, s: recordSummary(rec) }))
+    .map((rec) => ({ rec, s: recordSummary(rec), h: hiddenIds.includes(rec.id) }))
     .sort((a, b) => b.s.compareMonth - a.s.compareMonth);
 
   const anyVac = data.some((d) => d.s.vacBonusMonth > 0);
@@ -777,7 +792,7 @@ function ComparePdfDoc({ records }) {
     const max = period === "month" ? maxMonth : maxYear;
     return (
       <div className="pdf-bars">
-        {data.map(({ rec, s }) => {
+        {data.map(({ rec, s, h }) => {
           const netVal = period === "month" ? s.month : s.year;
           const bonusVal = period === "month" ? s.vacBonusMonth : s.vacBonusYear;
           const total = netVal + bonusVal;
@@ -799,7 +814,7 @@ function ComparePdfDoc({ records }) {
                   )}
                 </div>
               </div>
-              <div className="pdf-bar-val">{fmt(total)} Kč</div>
+              <div className="pdf-bar-val">{money(total, h)} Kč</div>
             </div>
           );
         })}
@@ -827,14 +842,14 @@ function ComparePdfDoc({ records }) {
           </tr>
         </thead>
         <tbody>
-          {data.map(({ rec, s }) => (
+          {data.map(({ rec, s, h }) => (
             <tr key={rec.id} className={s.compareMonth === bestMonth ? "best" : ""}>
               <td>{s.compareMonth === bestMonth ? "★ " : ""}{rec.name}</td>
               <td>{s.isOsvc ? "IČO" : "Zaměstnanec"}</td>
-              <td className="r">{fmt(s.month)} Kč</td>
-              {anyVac && <td className="r">{s.vacBonusMonth > 0 ? "+" + fmt(s.vacBonusMonth) + " Kč" : "—"}</td>}
-              <td className="r strong">{fmt(s.compareMonth)} Kč</td>
-              <td className="r">{fmt(s.compareYear)} Kč</td>
+              <td className="r">{money(s.month, h)} Kč</td>
+              {anyVac && <td className="r">{s.vacBonusMonth > 0 ? "+" + money(s.vacBonusMonth, h) + " Kč" : "—"}</td>}
+              <td className="r strong">{money(s.compareMonth, h)} Kč</td>
+              <td className="r">{money(s.compareYear, h)} Kč</td>
             </tr>
           ))}
         </tbody>
@@ -848,7 +863,7 @@ function ComparePdfDoc({ records }) {
 
       {/* rozpis položek jednotlivých mezd */}
       <h2 className="pdf-h2">Rozpis jednotlivých mezd</h2>
-      {data.map(({ rec, s }) => {
+      {data.map(({ rec, s, h }) => {
         const { lines } = pdfBreakdown(rec);
         const d = s.detail;
         return (
@@ -872,25 +887,25 @@ function ComparePdfDoc({ records }) {
                 {lines.map((l, i) => (
                   <tr key={i}>
                     <td>{l.label}</td>
-                    <td className="r">{fmt(l.month)} Kč</td>
-                    <td className="r">{fmt(l.year)} Kč</td>
+                    <td className="r">{money(l.month, h)} Kč</td>
+                    <td className="r">{money(l.year, h)} Kč</td>
                   </tr>
                 ))}
                 {s.isOsvc && d && (
                   <>
-                    <tr className="sub"><td>Hrubý příjem</td><td className="r">{fmt(d.incomeMonth)} Kč</td><td className="r">{fmt(d.incomeYear)} Kč</td></tr>
-                    <tr className="neg"><td>− Sociální pojištění</td><td className="r">−{fmt(d.social / 12)} Kč</td><td className="r">−{fmt(d.social)} Kč</td></tr>
-                    <tr className="neg"><td>− Zdravotní pojištění</td><td className="r">−{fmt(d.health / 12)} Kč</td><td className="r">−{fmt(d.health)} Kč</td></tr>
-                    <tr className="neg"><td>− Daň z příjmu</td><td className="r">−{fmt(d.tax / 12)} Kč</td><td className="r">−{fmt(d.tax)} Kč</td></tr>
+                    <tr className="sub"><td>Hrubý příjem</td><td className="r">{money(d.incomeMonth, h)} Kč</td><td className="r">{money(d.incomeYear, h)} Kč</td></tr>
+                    <tr className="neg"><td>− Sociální pojištění</td><td className="r">−{money(d.social / 12, h)} Kč</td><td className="r">−{money(d.social, h)} Kč</td></tr>
+                    <tr className="neg"><td>− Zdravotní pojištění</td><td className="r">−{money(d.health / 12, h)} Kč</td><td className="r">−{money(d.health, h)} Kč</td></tr>
+                    <tr className="neg"><td>− Daň z příjmu</td><td className="r">−{money(d.tax / 12, h)} Kč</td><td className="r">−{money(d.tax, h)} Kč</td></tr>
                   </>
                 )}
                 {!s.isOsvc && s.vacBonusMonth > 0 && (
-                  <tr className="sub"><td>+ Bonus za volno ({s.vacationDays} dní)</td><td className="r">+{fmt(s.vacBonusMonth)} Kč</td><td className="r">+{fmt(s.vacBonusYear)} Kč</td></tr>
+                  <tr className="sub"><td>+ Bonus za volno ({s.vacationDays} dní)</td><td className="r">+{money(s.vacBonusMonth, h)} Kč</td><td className="r">+{money(s.vacBonusYear, h)} Kč</td></tr>
                 )}
                 <tr className="total">
                   <td>Čistá mzda{!s.isOsvc && s.vacBonusMonth > 0 ? " vč. bonusu" : ""}</td>
-                  <td className="r">{fmt(s.compareMonth)} Kč</td>
-                  <td className="r">{fmt(s.compareYear)} Kč</td>
+                  <td className="r">{money(s.compareMonth, h)} Kč</td>
+                  <td className="r">{money(s.compareYear, h)} Kč</td>
                 </tr>
               </tbody>
             </table>
@@ -1857,7 +1872,7 @@ export default function App() {
                         <FileDown size={16} /> {pdfBusy ? "Generuji PDF…" : "Exportovat do PDF"}
                       </button>
                     </div>
-                    <CompareView records={compareRecords} />
+                    <CompareView records={compareRecords} hiddenIds={hiddenIds} onToggleHidden={toggleHidden} />
                   </>
                 )}
               </>
@@ -1941,7 +1956,8 @@ export default function App() {
                   <li><strong>Duplikovat</strong> – vytvoří kopii, kterou upravíš a uložíš jako novou.</li>
                   <li><strong>Smazat</strong> – odstraní mzdu (jen z tvého prohlížeče).</li>
                   <li><strong>Oko</strong> v rohu karty – skryje částky na kartě (místo nich hvězdičky). Volba se pamatuje,
-                    dokud ji znovu nepřepneš.</li>
+                    dokud ji znovu nepřepneš. Stejné oko je i u každé mzdy v tabulce <em>Porovnání mezd</em>;
+                    skrytí platí na obou místech i v exportu do PDF.</li>
                 </ul>
               </section>
 
@@ -1972,7 +1988,7 @@ export default function App() {
       {/* skrytý dokument pro PDF export (html2canvas ho vyfotí) */}
       {compareRecords.length > 0 && (
         <div className="pdf-doc" ref={pdfRef} aria-hidden="true">
-          <ComparePdfDoc records={compareRecords} />
+          <ComparePdfDoc records={compareRecords} hiddenIds={hiddenIds} />
         </div>
       )}
 
@@ -2421,6 +2437,7 @@ const css = `
 .icon-btn:hover { color:var(--txt); }
 .icon-btn.danger:hover { color:var(--danger); background:rgba(224,82,77,.12); }
 .icon-btn.sm { width:28px; height:28px; border-radius:8px; }
+.icon-btn.xs { width:24px; height:24px; border-radius:7px; margin-left:auto; flex-shrink:0; }
 .icon-btn.on { color:var(--acc); background:rgba(59,108,246,.10); }
 .sc-head-r { display:inline-flex; align-items:center; gap:8px; }
 .muted { color:var(--mut); font-size:14px; }
