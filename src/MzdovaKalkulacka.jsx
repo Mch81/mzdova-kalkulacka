@@ -100,11 +100,14 @@ const uid = () => Math.random().toString(36).slice(2, 10);
 function defaultRates() {
   return {
     expensePct: 60,        // paušální výdaje %
+    expenseCap: 1200000,   // strop paušálních výdajů Kč/rok (60 % z max. 2 mil. Kč)
     taxPct: 15,            // základní sazba daně %
     taxPctHigh: 23,        // zvýšená sazba daně %
     progThreshold: 1762812,// hranice pro 23 % (36× průměrná mzda 2026) Kč/rok
     taxCredit: 30840,      // roční sleva na poplatníka Kč
-    basePct: 50,           // vyměřovací základ = % ze zisku
+    basePct: 50,           // vyměřovací základ zdravotní = % ze zisku
+    socialBasePct: 55,     // vyměřovací základ sociální = % ze zisku (od 2024)
+    maxSocialBase: 2350416,// max. vyměřovací základ sociální Kč/rok (48× průměrná mzda 2026)
     socialPct: 29.2,       // sociální pojištění %
     healthPct: 13.5,       // zdravotní pojištění %
     minSocial: 5720,       // min. měsíční záloha sociální Kč
@@ -117,6 +120,7 @@ function defaultEmpRates() {
   return {
     socialPct: 7.1,         // sociální pojištění zaměstnance %
     healthPct: 4.5,         // zdravotní pojištění zaměstnance %
+    maxSocialBase: 2350416, // max. vyměřovací základ sociální Kč/rok (48× průměrná mzda 2026)
     taxPct: 15,             // základní sazba daně %
     taxPctHigh: 23,         // zvýšená sazba daně %
     progThreshold: 1762812, // hranice pro 23 % (36× průměrná mzda 2026) Kč/rok
@@ -263,14 +267,22 @@ function osvcCalc(invoices, rates) {
   const incomeYear = invoiceTotals(invoices).year; // hrubý příjem / rok
 
   // Zisk po paušálních výdajích
-  const expenses = incomeYear * (r.expensePct / 100);
+  // Paušální výdaje se stropem (60 % max. 1,2 mil. Kč/rok)
+  const expensesUncapped = incomeYear * (r.expensePct / 100);
+  const expenseCap = Number(r.expenseCap) || 0;
+  const expensesCapped = expenseCap > 0 && expensesUncapped > expenseCap;
+  const expenses = expensesCapped ? expenseCap : expensesUncapped;
   const profit = Math.max(0, incomeYear - expenses);
 
-  // Vyměřovací základ pro pojistné
-  const base = profit * (r.basePct / 100);
+  // Vyměřovací základy pro pojistné: sociální 55 % (se stropem), zdravotní 50 % zisku
+  const socialBaseUncapped = profit * (r.socialBasePct / 100);
+  const maxSocialBase = Number(r.maxSocialBase) || 0;
+  const socialBaseCapped = maxSocialBase > 0 && socialBaseUncapped > maxSocialBase;
+  const socialBase = socialBaseCapped ? maxSocialBase : socialBaseUncapped;
+  const base = profit * (r.basePct / 100); // zdravotní
 
   // Sociální a zdravotní – respektuje minimální zálohy (roční)
-  const socialCalc = base * (r.socialPct / 100);
+  const socialCalc = socialBase * (r.socialPct / 100);
   const healthCalc = base * (r.healthPct / 100);
   const socialMin = r.minSocial * 12;
   const healthMin = r.minHealth * 12;
@@ -291,7 +303,7 @@ function osvcCalc(invoices, rates) {
 
   return {
     incomeYear, incomeMonth: incomeYear / 12,
-    expenses, profit, base,
+    expenses, expensesCapped, profit, base, socialBase, socialBaseCapped,
     social, health, tax,
     socialIsMin: incomeYear > 0 && socialCalc < socialMin,
     healthIsMin: incomeYear > 0 && healthCalc < healthMin,
@@ -316,7 +328,10 @@ function employeeCalc(items, empRates) {
   }
 
   // Odvody zaměstnance z hrubé mzdy
-  const social = grossYear * (r.socialPct / 100);
+  // Sociální má roční strop vyměřovacího základu (48× průměrná mzda), zdravotní ne
+  const maxSocialBase = Number(r.maxSocialBase) || 0;
+  const socialCapped = maxSocialBase > 0 && grossYear > maxSocialBase;
+  const social = (socialCapped ? maxSocialBase : grossYear) * (r.socialPct / 100);
   const health = grossYear * (r.healthPct / 100);
 
   // Daň: progresivní 15 % / 23 % z hrubé mzdy, minus sleva
@@ -334,7 +349,7 @@ function employeeCalc(items, empRates) {
   return {
     grossYear, grossMonth: grossYear / 12,
     benefitsYear, benefitsMonth: benefitsYear / 12,
-    social, health, tax, taxBeforeCredit, inProgression,
+    social, socialCapped, health, tax, taxBeforeCredit, inProgression,
     deductions,
     netCashYear, netCashMonth: netCashYear / 12,
     netYear, netMonth: netYear / 12,
@@ -1510,7 +1525,10 @@ export default function App() {
                 <span className="bd-v">{fmt(emp.grossYear)} Kč</span>
               </div>
               <div className="bd-row deduct">
-                <span>Sociální pojištění ({empRates.socialPct} %)</span>
+                <span>
+                  Sociální pojištění ({empRates.socialPct} %)
+                  {emp.socialCapped && <em className="min-tag">strop {fmt(empRates.maxSocialBase)}</em>}
+                </span>
                 <span className="bd-v">−{fmt(emp.social)} Kč</span>
               </div>
               <div className="bd-row deduct">
@@ -1558,6 +1576,7 @@ export default function App() {
                   <div className="rates-grid">
                     <RateField label="Sociální pojištění" suffix="%" value={empRates.socialPct} onChange={(v) => updateEmpRate("socialPct", v)} />
                     <RateField label="Zdravotní pojištění" suffix="%" value={empRates.healthPct} onChange={(v) => updateEmpRate("healthPct", v)} />
+                    <RateField label="Max. základ sociální" suffix="Kč/rok" value={empRates.maxSocialBase} onChange={(v) => updateEmpRate("maxSocialBase", v)} />
                     <RateField label="Sazba daně" suffix="%" value={empRates.taxPct} onChange={(v) => updateEmpRate("taxPct", v)} />
                     <RateField label="Zvýšená sazba daně" suffix="%" value={empRates.taxPctHigh} onChange={(v) => updateEmpRate("taxPctHigh", v)} />
                     <RateField label="Hranice pro zvýšenou daň" suffix="Kč/rok" value={empRates.progThreshold} onChange={(v) => updateEmpRate("progThreshold", v)} />
@@ -1619,7 +1638,10 @@ export default function App() {
                 <span className="bd-v">{fmt(osvc.incomeYear)} Kč</span>
               </div>
               <div className="bd-row sub">
-                <span>− Paušální výdaje ({rates.expensePct} %)</span>
+                <span>
+                  − Paušální výdaje ({rates.expensePct} %)
+                  {osvc.expensesCapped && <em className="min-tag">strop {fmt(rates.expenseCap)}</em>}
+                </span>
                 <span className="bd-v">−{fmt(osvc.expenses)} Kč</span>
               </div>
               <div className="bd-row total-line">
@@ -1628,14 +1650,15 @@ export default function App() {
               </div>
               <div className="bd-row deduct">
                 <span>
-                  Sociální pojištění ({rates.socialPct} %)
+                  Sociální pojištění ({rates.socialPct} % z {rates.socialBasePct} % zisku)
                   {osvc.socialIsMin && <em className="min-tag">min. záloha</em>}
+                  {osvc.socialBaseCapped && <em className="min-tag">strop {fmt(rates.maxSocialBase)}</em>}
                 </span>
                 <span className="bd-v">−{fmt(osvc.social)} Kč</span>
               </div>
               <div className="bd-row deduct">
                 <span>
-                  Zdravotní pojištění ({rates.healthPct} %)
+                  Zdravotní pojištění ({rates.healthPct} % z {rates.basePct} % zisku)
                   {osvc.healthIsMin && <em className="min-tag">min. záloha</em>}
                 </span>
                 <span className="bd-v">−{fmt(osvc.health)} Kč</span>
@@ -1670,11 +1693,14 @@ export default function App() {
                 <div className="rates-body">
                   <div className="rates-grid">
                     <RateField label="Paušální výdaje" suffix="%" value={rates.expensePct} onChange={(v) => updateRate("expensePct", v)} />
+                    <RateField label="Strop paušálních výdajů" suffix="Kč/rok" value={rates.expenseCap} onChange={(v) => updateRate("expenseCap", v)} />
                     <RateField label="Sazba daně" suffix="%" value={rates.taxPct} onChange={(v) => updateRate("taxPct", v)} />
                     <RateField label="Zvýšená sazba daně" suffix="%" value={rates.taxPctHigh} onChange={(v) => updateRate("taxPctHigh", v)} />
                     <RateField label="Hranice pro zvýšenou daň" suffix="Kč/rok" value={rates.progThreshold} onChange={(v) => updateRate("progThreshold", v)} />
                     <RateField label="Sleva na poplatníka" suffix="Kč/rok" value={rates.taxCredit} onChange={(v) => updateRate("taxCredit", v)} />
-                    <RateField label="Vyměřovací základ" suffix="% ze zisku" value={rates.basePct} onChange={(v) => updateRate("basePct", v)} />
+                    <RateField label="Vyměřovací základ sociální" suffix="% ze zisku" value={rates.socialBasePct} onChange={(v) => updateRate("socialBasePct", v)} />
+                    <RateField label="Vyměřovací základ zdravotní" suffix="% ze zisku" value={rates.basePct} onChange={(v) => updateRate("basePct", v)} />
+                    <RateField label="Max. základ sociální" suffix="Kč/rok" value={rates.maxSocialBase} onChange={(v) => updateRate("maxSocialBase", v)} />
                     <RateField label="Sociální pojištění" suffix="%" value={rates.socialPct} onChange={(v) => updateRate("socialPct", v)} />
                     <RateField label="Zdravotní pojištění" suffix="%" value={rates.healthPct} onChange={(v) => updateRate("healthPct", v)} />
                     <RateField label="Min. záloha sociální" suffix="Kč/měs" value={rates.minSocial} onChange={(v) => updateRate("minSocial", v)} />
@@ -1688,8 +1714,9 @@ export default function App() {
             </div>
 
             <p className="footnote">
-              Mzda = součet všech faktur. Výpočet používá paušální výdaje {rates.expensePct} %, vyměřovací základ {rates.basePct} % ze zisku
-              a respektuje minimální zálohy. Daň je progresivní: {rates.taxPct} % z daňového základu do {fmt(rates.progThreshold)} Kč
+              Mzda = součet všech faktur. Výpočet používá paušální výdaje {rates.expensePct} % (max. {fmt(rates.expenseCap)} Kč/rok),
+              vyměřovací základ {rates.socialBasePct} % ze zisku pro sociální (max. {fmt(rates.maxSocialBase)} Kč/rok)
+              a {rates.basePct} % ze zisku pro zdravotní pojištění a respektuje minimální zálohy. Daň je progresivní: {rates.taxPct} % z daňového základu do {fmt(rates.progThreshold)} Kč
               a {rates.taxPctHigh} % z části nad touto hranicí, snížená o slevu na poplatníka.
               Jde o orientační odhad — skutečné odvody ověř u účetního.
             </p>
