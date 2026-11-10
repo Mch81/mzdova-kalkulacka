@@ -5,6 +5,7 @@ import {
   Briefcase, Building2, SlidersHorizontal, ChevronDown, ArrowDownToLine,
   BarChart3, TrendingUp, Crown,
   Download, Upload, Info, ShieldCheck, FileDown, BookOpen,
+  Eye, EyeOff,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -90,6 +91,9 @@ const storage = {
 // Faktura (OSVČ):
 //   label, amount, period ('month'|'year')
 //   MD rate: kind:'mdrate', amount = cena za 1 MD, days = počet MD/rok (výchozí 220)
+
+const HIDDEN_KEY = "mk_hidden_ids"; // id mezd se skrytými částkami na kartách
+const MASK = "******";
 
 const DAYS_DIVISOR = 20; // extra volno: měsíční plat / 20 × dní
 const STATUTORY_VACATION_DAYS = 20; // zákonná dovolená; k ní se přičítají dny navíc
@@ -921,6 +925,13 @@ export default function App() {
   const [saved, setSaved] = useState([]);
   const [loadingList, setLoadingList] = useState(true);
   const [compareIds, setCompareIds] = useState([]); // vybrané mzdy k porovnání
+  // id uložených mezd, u kterých jsou částky skryté (pamatuje se v úložišti)
+  const [hiddenIds, setHiddenIds] = useState(() => {
+    try {
+      const v = JSON.parse(backend.getItem(HIDDEN_KEY) || "[]");
+      return Array.isArray(v) ? v : [];
+    } catch (_) { return []; }
+  });
   const [toast, setToast] = useState(null);
   const [dirty, setDirty] = useState(false);
   const fileInputRef = useRef(null);
@@ -1110,6 +1121,15 @@ export default function App() {
     flash("Vytvořena kopie – ulož ji");
   };
 
+  /* ---- skrytí částek na kartě uložené mzdy ---- */
+  const saveHidden = (ids) => {
+    setHiddenIds(ids);
+    storage.set(HIDDEN_KEY, JSON.stringify(ids));
+  };
+  const toggleHidden = (id) => {
+    saveHidden(hiddenIds.includes(id) ? hiddenIds.filter((x) => x !== id) : [...hiddenIds, id]);
+  };
+
   const del = async (rec) => {
     try {
       await storage.delete(rec.id);
@@ -1117,6 +1137,7 @@ export default function App() {
         setCurrentId(null);
       }
       setCompareIds((ids) => ids.filter((x) => x !== rec.id));
+      if (hiddenIds.includes(rec.id)) saveHidden(hiddenIds.filter((x) => x !== rec.id));
       await refreshList();
       flash("Smazáno");
     } catch (e) {
@@ -1745,23 +1766,35 @@ export default function App() {
               <div className="saved-grid">
                 {saved.map((rec) => {
                   const s = recordSummary(rec);
+                  const hidden = hiddenIds.includes(rec.id);
                   return (
                     <div key={rec.id} className={rec.id === currentId ? "save-card active" : "save-card"}>
                       <div className="sc-head">
                         <span className={s.isOsvc ? "type-tag osvc" : "type-tag"}>
                           {s.isOsvc ? "IČO" : "Zaměstnanec"}
                         </span>
-                        {rec.id === currentId && <span className="now"><Check size={12} /> aktivní</span>}
+                        <span className="sc-head-r">
+                          {rec.id === currentId && <span className="now"><Check size={12} /> aktivní</span>}
+                          <button
+                            className={hidden ? "icon-btn sm on" : "icon-btn sm"}
+                            title={hidden ? "Zobrazit částky" : "Skrýt částky"}
+                            aria-label={hidden ? "Zobrazit částky" : "Skrýt částky"}
+                            aria-pressed={hidden}
+                            onClick={() => toggleHidden(rec.id)}
+                          >
+                            {hidden ? <EyeOff size={14} /> : <Eye size={14} />}
+                          </button>
+                        </span>
                       </div>
                       <h3 className="sc-name">{rec.name}</h3>
                       <div className="sc-figures">
                         <div>
                           <span className="sc-k">Čistá / měsíc</span>
-                          <span className="sc-v">{fmt(s.month)} Kč</span>
+                          <span className="sc-v">{hidden ? MASK : fmt(s.month)} Kč</span>
                         </div>
                         <div>
                           <span className="sc-k">Čistá / rok</span>
-                          <span className="sc-v">{fmt(s.year)} Kč</span>
+                          <span className="sc-v">{hidden ? MASK : fmt(s.year)} Kč</span>
                         </div>
                       </div>
                       <div className="sc-actions">
@@ -1907,6 +1940,8 @@ export default function App() {
                   <li><strong>Otevřít</strong> – načte mzdu zpět do formuláře k úpravě (uloží se přes <em>Uložit změny</em>).</li>
                   <li><strong>Duplikovat</strong> – vytvoří kopii, kterou upravíš a uložíš jako novou.</li>
                   <li><strong>Smazat</strong> – odstraní mzdu (jen z tvého prohlížeče).</li>
+                  <li><strong>Oko</strong> v rohu karty – skryje částky na kartě (místo nich hvězdičky). Volba se pamatuje,
+                    dokud ji znovu nepřepneš.</li>
                 </ul>
               </section>
 
@@ -2385,6 +2420,9 @@ const css = `
 }
 .icon-btn:hover { color:var(--txt); }
 .icon-btn.danger:hover { color:var(--danger); background:rgba(224,82,77,.12); }
+.icon-btn.sm { width:28px; height:28px; border-radius:8px; }
+.icon-btn.on { color:var(--acc); background:rgba(59,108,246,.10); }
+.sc-head-r { display:inline-flex; align-items:center; gap:8px; }
 .muted { color:var(--mut); font-size:14px; }
 
 /* úvodní stránka – upozornění na ukládání + záloha dat */
